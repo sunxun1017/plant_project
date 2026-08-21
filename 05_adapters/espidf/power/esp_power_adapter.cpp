@@ -13,8 +13,10 @@ Status EspPowerAdapter::enter_light_sleep() {
     if (!wake_status.ok()) {
         return wake_status;
     }
-    if (Config::Power::timer_wakeup_us != 0 &&
-        esp_sleep_enable_timer_wakeup(Config::Power::timer_wakeup_us) != ESP_OK) {
+    const std::uint64_t deep_sleep_delay_us =
+        static_cast<std::uint64_t>(Config::Power::deep_sleep_delay_ms) * 1000ULL;
+    if (Config::Power::deep_sleep_enabled && deep_sleep_delay_us != 0 &&
+        esp_sleep_enable_timer_wakeup(deep_sleep_delay_us) != ESP_OK) {
         return Status::failure(ErrorCode::InternalFailure);
     }
     return esp_light_sleep_start() == ESP_OK ? Status::success()

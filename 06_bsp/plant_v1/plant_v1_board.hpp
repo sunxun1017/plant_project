@@ -55,6 +55,11 @@ struct BoardConfig final {
         static constexpr bool enable_internal_pull_down = true;
     };
 
+    struct Interaction final {
+        static constexpr std::uint32_t automatic_sleep_ms = 5U * 60U * 1000U;
+        static constexpr std::uint32_t system_tick_ms = 20;
+    };
+
     struct Power final {
         static constexpr bool deep_sleep_enabled = true;
         static constexpr std::uint32_t deep_sleep_delay_ms = 30U * 60U * 1000U;

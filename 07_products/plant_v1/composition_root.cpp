@@ -48,6 +48,7 @@ OtaService ota{
         Config::Product::firmware_version,
     }};
 PlantApplication application{behavior, lifecycle, power, ota};
+std::uint64_t last_activity_us = 0;
 
 bool initialize_hardware() {
     bool ok = true;
@@ -64,7 +65,13 @@ void handle_return_from_light_sleep() {
         snapshot.power_mode != PowerMode::LightSleep) {
         return;
     }
+    if (power_port.wake_source() == WakeSource::Timer &&
+        Config::Power::deep_sleep_enabled) {
+        (void)power.request_deep_sleep(PowerConditions{});
+        return;
+    }
     if (power.handle_wake().ok()) {
+        last_activity_us = static_cast<std::uint64_t>(esp_timer_get_time());
         (void)application.request_behavior(Behavior::WakeUp, InterruptionReason::WakeSleep);
     }
 }
@@ -74,6 +81,7 @@ void handle_return_from_light_sleep() {
 void initialize() {
     const bool hardware_ok = initialize_hardware();
     (void)application.finish_boot(hardware_ok);
+    last_activity_us = static_cast<std::uint64_t>(esp_timer_get_time());
     ESP_LOGI(
         kTag,
         "boot product=%s hw=%" PRIu32 " firmware=0x%08" PRIx32 " status=%s",
@@ -91,6 +99,7 @@ void initialize() {
 
         TouchGesture gesture{};
         if (touch.poll(now_us / 1000ULL, gesture)) {
+            last_activity_us = now_us;
             (void)application.handle_touch(gesture);
         }
 
@@ -98,9 +107,19 @@ void initialize() {
         if (motion.poll(now_us, execution_id)) {
             (void)application.handle_behavior_event(
                 BehaviorEvent{BehaviorEventType::MotionCompleted, execution_id});
+            if (lifecycle.snapshot().state == DeviceState::Idle) {
+                last_activity_us = static_cast<std::uint64_t>(esp_timer_get_time());
+            }
             handle_return_from_light_sleep();
         }
-        vTaskDelay(pdMS_TO_TICKS(20));
+
+        if (lifecycle.snapshot().state == DeviceState::Idle &&
+            now_us - last_activity_us >=
+                static_cast<std::uint64_t>(Config::Interaction::automatic_sleep_ms) * 1000ULL) {
+            last_activity_us = now_us;
+            (void)application.handle_idle_timeout();
+        }
+        vTaskDelay(pdMS_TO_TICKS(Config::Interaction::system_tick_ms));
     }
 }
 
