@@ -44,6 +44,12 @@ Status PowerService::handle_wake() {
     if (before.state != DeviceState::Sleeping || before.power_mode == PowerMode::Active) {
         return Status::failure(ErrorCode::InvalidState);
     }
+    if (before.power_mode == PowerMode::LightSleep) {
+        const Status active_status = power_.leave_light_sleep();
+        if (!active_status.ok()) {
+            return active_status;
+        }
+    }
     last_wake_source_ = power_.wake_source();
     return lifecycle_.wake(before.power_mode == PowerMode::DeepSleep);
 }

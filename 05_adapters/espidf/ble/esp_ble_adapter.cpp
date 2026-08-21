@@ -203,6 +203,8 @@ Status EspBleAdapter::start_advertising() {
     ble_gap_adv_params parameters{};
     parameters.conn_mode = BLE_GAP_CONN_MODE_UND;
     parameters.disc_mode = BLE_GAP_DISC_MODE_GEN;
+    parameters.itvl_min = Config::Ble::advertising_interval_min_units;
+    parameters.itvl_max = Config::Ble::advertising_interval_max_units;
     return ble_gap_adv_start(
                address_type,
                nullptr,

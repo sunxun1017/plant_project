@@ -15,6 +15,11 @@ public:
         return next_status;
     }
 
+    Status leave_light_sleep() override {
+        ++leave_light_sleep_count;
+        return next_status;
+    }
+
     Status enter_deep_sleep(std::uint64_t timer_wakeup_us) override {
         ++deep_sleep_count;
         last_timer_wakeup_us = timer_wakeup_us;
@@ -26,6 +31,7 @@ public:
     Status next_status{};
     WakeSource source{WakeSource::Touch};
     int light_sleep_count{0};
+    int leave_light_sleep_count{0};
     int deep_sleep_count{0};
     std::uint64_t last_timer_wakeup_us{0};
 };
@@ -106,8 +112,21 @@ void test_power_enters_deep_sleep_and_records_wake() {
     CHECK_LOCAL(lifecycle.snapshot().power_mode == PowerMode::DeepSleep);
     CHECK_LOCAL(port.last_timer_wakeup_us == config.timer_wakeup_us);
     CHECK_LOCAL(power.handle_wake().ok());
+    CHECK_LOCAL(port.leave_light_sleep_count == 0);
     CHECK_LOCAL(power.last_wake_source() == WakeSource::Touch);
     CHECK_LOCAL(lifecycle.snapshot().state == DeviceState::Booting);
+}
+
+void test_light_sleep_wake_reacquires_active_power_lock() {
+    auto lifecycle = sleeping_lifecycle();
+    FakePower port;
+    PowerService power{lifecycle, port};
+
+    CHECK_LOCAL(power.request_light_sleep().ok());
+    CHECK_LOCAL(power.handle_wake().ok());
+    CHECK_LOCAL(port.leave_light_sleep_count == 1);
+    CHECK_LOCAL(lifecycle.snapshot().state == DeviceState::Idle);
+    CHECK_LOCAL(lifecycle.snapshot().power_mode == PowerMode::Active);
 }
 
 void test_power_port_failure_restores_active_mode() {
@@ -183,6 +202,7 @@ void test_ota_verification_failure_keeps_current_firmware() {
 int run_ota_power_service_tests() {
     test_power_rejects_deep_sleep_while_busy();
     test_power_enters_deep_sleep_and_records_wake();
+    test_light_sleep_wake_reacquires_active_power_lock();
     test_power_port_failure_restores_active_mode();
     test_ota_happy_path();
     test_ota_rejects_unsigned_downgrade_and_wrong_offset();

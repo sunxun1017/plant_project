@@ -20,6 +20,7 @@ class IPowerPort {
 public:
     virtual ~IPowerPort() = default;
     virtual Status enter_light_sleep() = 0;
+    virtual Status leave_light_sleep() = 0;
     virtual Status enter_deep_sleep(std::uint64_t timer_wakeup_us) = 0;
     [[nodiscard]] virtual WakeSource wake_source() const = 0;
 };

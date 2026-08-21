@@ -2,28 +2,66 @@
 
 #include "06_bsp/plant_v1/plant_v1_board.hpp"
 #include "driver/gpio.h"
+#include "esp_pm.h"
 #include "esp_sleep.h"
 
 namespace plant {
 
 using Config = bsp::v1::BoardConfig;
 
-Status EspPowerAdapter::enter_light_sleep() {
+Status EspPowerAdapter::initialize() {
     const Status wake_status = configure_touch_wakeup(false);
     if (!wake_status.ok()) {
         return wake_status;
     }
-    const std::uint64_t deep_sleep_delay_us =
-        static_cast<std::uint64_t>(Config::Power::deep_sleep_delay_ms) * 1000ULL;
-    if (Config::Power::deep_sleep_enabled && deep_sleep_delay_us != 0 &&
-        esp_sleep_enable_timer_wakeup(deep_sleep_delay_us) != ESP_OK) {
+
+    esp_pm_config_t configuration{};
+    configuration.max_freq_mhz = Config::Power::maximum_cpu_frequency_mhz;
+    configuration.min_freq_mhz = Config::Power::minimum_cpu_frequency_mhz;
+    configuration.light_sleep_enable = true;
+    if (esp_pm_configure(&configuration) != ESP_OK) {
         return Status::failure(ErrorCode::InternalFailure);
     }
-    return esp_light_sleep_start() == ESP_OK ? Status::success()
-                                              : Status::failure(ErrorCode::InternalFailure);
+    if (esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "plant_active", &active_lock_) !=
+            ESP_OK ||
+        esp_pm_lock_acquire(active_lock_) != ESP_OK) {
+        if (active_lock_ != nullptr) {
+            (void)esp_pm_lock_delete(active_lock_);
+            active_lock_ = nullptr;
+        }
+        return Status::failure(ErrorCode::InternalFailure);
+    }
+    active_lock_held_ = true;
+    initialized_ = true;
+    return Status::success();
+}
+
+Status EspPowerAdapter::enter_light_sleep() {
+    if (!initialized_ || active_lock_ == nullptr) {
+        return Status::failure(ErrorCode::InvalidState);
+    }
+    if (active_lock_held_ && esp_pm_lock_release(active_lock_) != ESP_OK) {
+        return Status::failure(ErrorCode::InternalFailure);
+    }
+    active_lock_held_ = false;
+    return Status::success();
+}
+
+Status EspPowerAdapter::leave_light_sleep() {
+    if (!initialized_ || active_lock_ == nullptr) {
+        return Status::failure(ErrorCode::InvalidState);
+    }
+    if (!active_lock_held_ && esp_pm_lock_acquire(active_lock_) != ESP_OK) {
+        return Status::failure(ErrorCode::InternalFailure);
+    }
+    active_lock_held_ = true;
+    return Status::success();
 }
 
 Status EspPowerAdapter::enter_deep_sleep(std::uint64_t timer_wakeup_us) {
+    if (esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL) != ESP_OK) {
+        return Status::failure(ErrorCode::InternalFailure);
+    }
     const Status wake_status = configure_touch_wakeup(true);
     if (!wake_status.ok()) {
         return wake_status;

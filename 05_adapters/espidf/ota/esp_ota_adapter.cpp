@@ -2,6 +2,27 @@
 
 namespace plant {
 
+Status EspOtaAdapter::finalize_boot(bool self_test_ok) {
+    const esp_partition_t* running_partition = esp_ota_get_running_partition();
+    if (running_partition == nullptr) {
+        return Status::failure(ErrorCode::OtaFailure);
+    }
+
+    esp_ota_img_states_t state{};
+    const esp_err_t state_status = esp_ota_get_state_partition(running_partition, &state);
+    if (state_status == ESP_ERR_NOT_FOUND || state != ESP_OTA_IMG_PENDING_VERIFY) {
+        return state_status == ESP_OK || state_status == ESP_ERR_NOT_FOUND
+                   ? Status::success()
+                   : Status::failure(ErrorCode::OtaFailure);
+    }
+
+    const esp_err_t finalize_status = self_test_ok
+                                          ? esp_ota_mark_app_valid_cancel_rollback()
+                                          : esp_ota_mark_app_invalid_rollback_and_reboot();
+    return finalize_status == ESP_OK ? Status::success()
+                                     : Status::failure(ErrorCode::OtaFailure);
+}
+
 std::size_t EspOtaAdapter::available_image_space() const {
     const esp_partition_t* partition = esp_ota_get_next_update_partition(nullptr);
     return partition == nullptr ? 0 : partition->size;

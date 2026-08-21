@@ -9,6 +9,7 @@ namespace plant {
 
 class EspOtaAdapter final : public IOtaPort {
 public:
+    Status finalize_boot(bool self_test_ok);
     [[nodiscard]] std::size_t available_image_space() const override;
     Status begin(const OtaImageMetadata& metadata) override;
     Status write(

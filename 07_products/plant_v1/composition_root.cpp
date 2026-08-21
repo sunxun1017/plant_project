@@ -63,26 +63,9 @@ bool initialize_hardware() {
     ok = light.initialize().ok() && ok;
     ok = haptic.initialize().ok() && ok;
     ok = touch.initialize().ok() && ok;
+    ok = power_port.initialize().ok() && ok;
     ok = communication.initialize().ok() && ok;
     return ok;
-}
-
-void handle_return_from_light_sleep() {
-    const LifecycleSnapshot snapshot = lifecycle.snapshot();
-    if (snapshot.state != DeviceState::Sleeping ||
-        snapshot.power_mode != PowerMode::LightSleep) {
-        return;
-    }
-    if (power_port.wake_source() == WakeSource::Timer &&
-        Config::Power::deep_sleep_enabled) {
-        (void)power.request_deep_sleep(
-            PowerConditions{communication.connected(), false, false});
-        return;
-    }
-    if (power.handle_wake().ok()) {
-        last_activity_us = static_cast<std::uint64_t>(esp_timer_get_time());
-        (void)application.request_behavior(Behavior::WakeUp, InterruptionReason::WakeSleep);
-    }
 }
 
 void respond_with_current_state(const Command& command, Status status) {
@@ -106,7 +89,9 @@ void respond_with_current_state(const Command& command, Status status) {
 
 void initialize() {
     const bool hardware_ok = initialize_hardware();
-    (void)application.finish_boot(hardware_ok);
+    const Status ota_boot_status = ota_port.finalize_boot(hardware_ok);
+    const bool boot_ok = hardware_ok && ota_boot_status.ok();
+    (void)application.finish_boot(boot_ok);
     last_activity_us = static_cast<std::uint64_t>(esp_timer_get_time());
     ESP_LOGI(
         kTag,
@@ -114,7 +99,7 @@ void initialize() {
         Config::Product::device_name,
         Config::Product::hardware_revision,
         Config::Product::firmware_version,
-        hardware_ok ? "ready" : "fault");
+        boot_ok ? "ready" : "fault");
 }
 
 [[noreturn]] void run() {
@@ -152,17 +137,30 @@ void initialize() {
         if (motion.poll(now_us, execution_id)) {
             (void)application.handle_behavior_event(
                 BehaviorEvent{BehaviorEventType::MotionCompleted, execution_id});
-            if (lifecycle.snapshot().state == DeviceState::Idle) {
+            const DeviceState state = lifecycle.snapshot().state;
+            if (state == DeviceState::Idle || state == DeviceState::Sleeping) {
                 last_activity_us = static_cast<std::uint64_t>(esp_timer_get_time());
             }
-            handle_return_from_light_sleep();
         }
 
-        if (lifecycle.snapshot().state == DeviceState::Idle &&
+        const LifecycleSnapshot lifecycle_state = lifecycle.snapshot();
+        if (lifecycle_state.state == DeviceState::Idle &&
             now_us - last_activity_us >=
                 static_cast<std::uint64_t>(Config::Interaction::automatic_sleep_ms) * 1000ULL) {
             last_activity_us = now_us;
             (void)application.handle_idle_timeout();
+        }
+        if (lifecycle_state.state == DeviceState::Sleeping &&
+            lifecycle_state.power_mode == PowerMode::LightSleep &&
+            Config::Power::deep_sleep_enabled && Config::Power::deep_sleep_delay_ms != 0 &&
+            now_us - last_activity_us >=
+                static_cast<std::uint64_t>(Config::Power::deep_sleep_delay_ms) * 1000ULL) {
+            const OtaState ota_state = ota.snapshot().state;
+            (void)power.request_deep_sleep(PowerConditions{
+                communication.connected(),
+                ota_state == OtaState::Receiving || ota_state == OtaState::Verifying,
+                false,
+            });
         }
         vTaskDelay(pdMS_TO_TICKS(Config::Interaction::system_tick_ms));
     }

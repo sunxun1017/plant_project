@@ -47,6 +47,7 @@ public:
         ++light_sleep_count;
         return Status::success();
     }
+    Status leave_light_sleep() override { return Status::success(); }
     Status enter_deep_sleep(std::uint64_t) override { return Status::success(); }
     WakeSource wake_source() const override { return WakeSource::Touch; }
 

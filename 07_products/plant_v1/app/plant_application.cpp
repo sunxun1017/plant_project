@@ -101,11 +101,18 @@ Status PlantApplication::begin_ota(const OtaImageMetadata& metadata) {
         return validation;
     }
 
-    const DeviceState state = lifecycle_.snapshot().state;
-    if (state == DeviceState::Sleeping) {
+    const LifecycleSnapshot lifecycle = lifecycle_.snapshot();
+    if (lifecycle.state == DeviceState::Sleeping) {
+        if (lifecycle.power_mode == PowerMode::LightSleep) {
+            const Status wake_status = power_.handle_wake();
+            if (!wake_status.ok()) {
+                return wake_status;
+            }
+        }
         return ota_.begin(metadata);
     }
-    if (state != DeviceState::Idle && state != DeviceState::Interacting) {
+    if (lifecycle.state != DeviceState::Idle &&
+        lifecycle.state != DeviceState::Interacting) {
         return Status::failure(ErrorCode::InvalidState);
     }
 
@@ -151,6 +158,14 @@ OtaSnapshot PlantApplication::ota_snapshot() const noexcept {
 }
 
 Status PlantApplication::start_behavior(Behavior behavior, InterruptionReason reason) {
+    const LifecycleSnapshot before = lifecycle_.snapshot();
+    if (before.state == DeviceState::Sleeping &&
+        before.power_mode == PowerMode::LightSleep && behavior == Behavior::WakeUp) {
+        const Status wake_status = power_.handle_wake();
+        if (!wake_status.ok()) {
+            return wake_status;
+        }
+    }
     const Status lifecycle_status = lifecycle_.begin_behavior(behavior);
     if (!lifecycle_status.ok()) {
         return lifecycle_status;
