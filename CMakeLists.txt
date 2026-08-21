@@ -12,6 +12,7 @@ add_library(plant_domain STATIC
     03_services/lifecycle/lifecycle_service.cpp
     03_services/ota/ota_service.cpp
     03_services/power/power_service.cpp
+    07_products/plant_v1/app/plant_application.cpp
 )
 
 target_include_directories(plant_domain PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -23,6 +24,7 @@ if(BUILD_TESTING)
     add_executable(plant_domain_tests
         08_tests/unit/behavior_service_test.cpp
         08_tests/unit/ota_power_service_test.cpp
+        08_tests/integration/plant_application_test.cpp
     )
     target_link_libraries(plant_domain_tests PRIVATE plant_domain)
     target_compile_options(plant_domain_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)

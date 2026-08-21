@@ -24,6 +24,7 @@ public:
         OtaProductIdentity identity,
         bool allow_downgrade = false) noexcept;
 
+    [[nodiscard]] Status validate(const OtaImageMetadata& metadata) const noexcept;
     Status begin(const OtaImageMetadata& metadata);
     Status write_chunk(
         std::size_t offset,

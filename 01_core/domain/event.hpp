@@ -27,4 +27,9 @@ enum class BehaviorOutcome : std::uint8_t {
     Faulted,
 };
 
+enum class TouchGesture : std::uint8_t {
+    SingleTap = 0,
+    LongPress,
+};
+
 }  // namespace plant

@@ -68,6 +68,9 @@ Status BehaviorService::stop() {
     if (state_ == BehaviorRunState::Fault) {
         return Status::failure(ErrorCode::InvalidState);
     }
+    if (state_ == BehaviorRunState::Idle) {
+        return Status::success();
+    }
     stop_outputs();
     state_ = BehaviorRunState::Idle;
     outcome_ = BehaviorOutcome::Stopped;

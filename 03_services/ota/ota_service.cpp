@@ -12,10 +12,7 @@ OtaService::OtaService(
       identity_(identity),
       allow_downgrade_(allow_downgrade) {}
 
-Status OtaService::begin(const OtaImageMetadata& metadata) {
-    if (state_ == OtaState::Receiving || state_ == OtaState::Verifying) {
-        return Status::failure(ErrorCode::Busy);
-    }
+Status OtaService::validate(const OtaImageMetadata& metadata) const noexcept {
     if (metadata.product_id != identity_.product_id ||
         metadata.hardware_revision != identity_.hardware_revision) {
         return Status::failure(ErrorCode::InvalidArgument);
@@ -26,6 +23,17 @@ Status OtaService::begin(const OtaImageMetadata& metadata) {
     }
     if (!allow_downgrade_ && metadata.firmware_version <= identity_.current_firmware_version) {
         return Status::failure(ErrorCode::InvalidArgument);
+    }
+    return Status::success();
+}
+
+Status OtaService::begin(const OtaImageMetadata& metadata) {
+    if (state_ == OtaState::Receiving || state_ == OtaState::Verifying) {
+        return Status::failure(ErrorCode::Busy);
+    }
+    const Status validation = validate(metadata);
+    if (!validation.ok()) {
+        return validation;
     }
 
     Status status = lifecycle_.begin_update();
