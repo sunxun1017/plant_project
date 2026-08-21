@@ -71,7 +71,15 @@ struct BoardConfig final {
         static constexpr std::uint32_t product_id = 0x504C414EU;  // "PLAN"
         static constexpr std::uint32_t hardware_revision = 1;
         static constexpr std::uint32_t firmware_version = 0x00010000U;
-        static constexpr std::size_t ota_chunk_size = 512;
+        static constexpr std::size_t ota_chunk_size = 496;
+    };
+
+    struct Ble final {
+        static constexpr std::uint16_t service_uuid = 0xFFF0;
+        static constexpr std::uint16_t command_uuid = 0xFFF1;
+        static constexpr std::uint16_t response_uuid = 0xFFF2;
+        static constexpr std::uint16_t preferred_mtu = 517;
+        static constexpr std::size_t receive_queue_depth = 4;
     };
 };
 
