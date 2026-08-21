@@ -21,7 +21,9 @@ public:
         OtaService& ota) noexcept;
 
     Status finish_boot(bool self_test_passed);
+    Status tick(std::uint64_t now_us);
     Status handle_touch(TouchGesture gesture);
+    Status handle_communication_disconnected();
     Status request_behavior(
         Behavior behavior,
         InterruptionReason reason = InterruptionReason::NormalCommand);
@@ -45,6 +47,7 @@ public:
 private:
     Status start_behavior(Behavior behavior, InterruptionReason reason);
     Status apply_behavior_outcome(BehaviorOutcome outcome);
+    Status apply_pending_behavior_outcome(Status operation_status);
 
     BehaviorService& behavior_;
     LifecycleService& lifecycle_;

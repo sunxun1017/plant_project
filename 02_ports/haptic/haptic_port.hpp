@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "01_core/common/status.hpp"
 #include "01_core/domain/behavior.hpp"
 
@@ -10,6 +12,7 @@ public:
     virtual ~IHapticPort() = default;
     virtual Status play(HapticPattern pattern, std::uint32_t execution_id) = 0;
     virtual Status stop() = 0;
+    virtual Status tick(std::uint64_t now_us) = 0;
 };
 
 }  // namespace plant

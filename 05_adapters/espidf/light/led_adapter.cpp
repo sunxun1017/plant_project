@@ -58,8 +58,7 @@ Status EspLedAdapter::play(LightPattern pattern, std::uint32_t) {
     }
     pattern_ = pattern;
     started_us_ = static_cast<std::uint64_t>(esp_timer_get_time());
-    tick(started_us_);
-    return Status::success();
+    return tick(started_us_);
 }
 
 Status EspLedAdapter::stop() {
@@ -68,41 +67,37 @@ Status EspLedAdapter::stop() {
     return set_rgb(0, 0, 0);
 }
 
-void EspLedAdapter::tick(std::uint64_t now_us) {
+Status EspLedAdapter::tick(std::uint64_t now_us) {
     const std::uint64_t elapsed = now_us - started_us_;
     switch (pattern_) {
         case LightPattern::FadeIn: {
             const auto duty = static_cast<std::uint8_t>(
                 elapsed >= 600000 ? Config::Led::maximum_duty
                                   : elapsed * Config::Led::maximum_duty / 600000);
-            (void)set_rgb(0, duty, duty / 3);
-            break;
+            return set_rgb(0, duty, duty / 3);
         }
         case LightPattern::SoftBreathing: {
             const auto duty = triangle(elapsed, 2400000);
-            (void)set_rgb(0, duty, duty / 4);
-            break;
+            return set_rgb(0, duty, duty / 4);
         }
         case LightPattern::ShortPulse:
-            (void)set_rgb(0, elapsed < 250000 ? Config::Led::maximum_duty : 0, 0);
-            break;
+            return set_rgb(0, elapsed < 250000 ? Config::Led::maximum_duty : 0, 0);
         case LightPattern::SlowBreathing: {
             const auto duty = triangle(elapsed, 4000000);
-            (void)set_rgb(0, duty / 2, duty / 5);
-            break;
+            return set_rgb(0, duty / 2, duty / 5);
         }
         case LightPattern::FadeOut: {
             const auto duty = static_cast<std::uint8_t>(
                 elapsed >= 600000 ? 0
                                   : Config::Led::maximum_duty -
                                         elapsed * Config::Led::maximum_duty / 600000);
-            (void)set_rgb(0, duty, duty / 3);
-            break;
+            return set_rgb(0, duty, duty / 3);
         }
         case LightPattern::ErrorBlink:
-            (void)set_rgb((elapsed / 500000) % 2 == 0 ? Config::Led::maximum_duty : 0, 0, 0);
-            break;
+            return set_rgb(
+                (elapsed / 500000) % 2 == 0 ? Config::Led::maximum_duty : 0, 0, 0);
     }
+    return Status::failure(ErrorCode::LightingFailure);
 }
 
 Status EspLedAdapter::set_rgb(std::uint8_t red, std::uint8_t green, std::uint8_t blue) {

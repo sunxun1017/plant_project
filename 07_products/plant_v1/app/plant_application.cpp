@@ -13,6 +13,10 @@ Status PlantApplication::finish_boot(bool self_test_passed) {
     return lifecycle_.finish_boot(self_test_passed);
 }
 
+Status PlantApplication::tick(std::uint64_t now_us) {
+    return apply_pending_behavior_outcome(behavior_.tick(now_us));
+}
+
 Status PlantApplication::handle_touch(TouchGesture gesture) {
     const DeviceState state = lifecycle_.snapshot().state;
     if (state == DeviceState::Booting || state == DeviceState::Fault ||
@@ -30,7 +34,21 @@ Status PlantApplication::handle_touch(TouchGesture gesture) {
         InterruptionReason::Touch);
 }
 
+Status PlantApplication::handle_communication_disconnected() {
+    const OtaState ota_state = ota_.snapshot().state;
+    if (!ota_pending_ && ota_state != OtaState::Receiving &&
+        ota_state != OtaState::Verifying) {
+        return Status::success();
+    }
+    return cancel_ota();
+}
+
 Status PlantApplication::request_behavior(Behavior behavior, InterruptionReason reason) {
+    const DeviceState state = lifecycle_.snapshot().state;
+    if ((behavior == Behavior::WakeUp && state == DeviceState::Idle) ||
+        (behavior == Behavior::Sleep && state == DeviceState::Sleeping)) {
+        return Status::success();
+    }
     return start_behavior(behavior, reason);
 }
 
@@ -50,7 +68,10 @@ Status PlantApplication::stop_behavior() {
 }
 
 Status PlantApplication::handle_behavior_event(const BehaviorEvent& event) {
-    const Status event_status = behavior_.handle_event(event);
+    return apply_pending_behavior_outcome(behavior_.handle_event(event));
+}
+
+Status PlantApplication::apply_pending_behavior_outcome(Status operation_status) {
     const BehaviorOutcome outcome = behavior_.take_outcome();
     if (outcome != BehaviorOutcome::None) {
         const Status outcome_status = apply_behavior_outcome(outcome);
@@ -58,7 +79,7 @@ Status PlantApplication::handle_behavior_event(const BehaviorEvent& event) {
             return outcome_status;
         }
     }
-    return event_status;
+    return operation_status;
 }
 
 Status PlantApplication::handle_idle_timeout() {

@@ -14,9 +14,16 @@ public:
         return Status::success();
     }
     Status stop() override { return Status::success(); }
+    Status poll(std::uint64_t, MotionPollResult& result) override {
+        result = poll_result;
+        poll_result = MotionPollResult{};
+        return poll_status;
+    }
 
     MotionPattern pattern{MotionPattern::ReturnNeutral};
     std::uint32_t execution_id{0};
+    MotionPollResult poll_result{};
+    Status poll_status{};
 };
 
 class AppLight final : public ILightPort {
@@ -26,8 +33,10 @@ public:
         return Status::success();
     }
     Status stop() override { return Status::success(); }
+    Status tick(std::uint64_t) override { return tick_status; }
 
     LightPattern pattern{LightPattern::SlowBreathing};
+    Status tick_status{};
 };
 
 class AppHaptic final : public IHapticPort {
@@ -37,8 +46,10 @@ public:
         return Status::success();
     }
     Status stop() override { return Status::success(); }
+    Status tick(std::uint64_t) override { return tick_status; }
 
     HapticPattern pattern{HapticPattern::Off};
+    Status tick_status{};
 };
 
 class AppPower final : public IPowerPort {
@@ -65,9 +76,13 @@ public:
         return Status::success();
     }
     Status verify_and_activate(const OtaImageMetadata&) override { return Status::success(); }
-    Status abort() override { return Status::success(); }
+    Status abort() override {
+        ++abort_count;
+        return Status::success();
+    }
 
     int begin_count{0};
+    int abort_count{0};
 };
 
 struct AppFixture {
@@ -94,7 +109,8 @@ int failures = 0;
 
 void complete_motion(AppFixture& fixture) {
     const auto id = fixture.behavior.snapshot().execution_id;
-    (void)fixture.app.handle_behavior_event({BehaviorEventType::MotionCompleted, id});
+    fixture.motion.poll_result = MotionPollResult{true, id};
+    (void)fixture.app.tick(1000);
 }
 
 void test_touch_happy_flow() {
@@ -157,7 +173,7 @@ void test_stop_is_idempotent_and_pending_ota_can_be_cancelled() {
 
     const OtaImageMetadata metadata{0x504C414E, 1, 2, 4, true};
     CHECK_APP(fixture.app.begin_ota(metadata).ok());
-    CHECK_APP(fixture.app.cancel_ota().ok());
+    CHECK_APP(fixture.app.handle_communication_disconnected().ok());
     complete_motion(fixture);
     CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Sleeping);
     CHECK_APP(fixture.power_port.light_sleep_count == 1);
@@ -179,6 +195,46 @@ void test_ble_command_dispatch_uses_same_application_rules() {
     CHECK_APP(fixture.app.handle_command(command).ok());
 }
 
+void test_wake_and_sleep_commands_are_idempotent_in_terminal_states() {
+    AppFixture fixture;
+    CHECK_APP(fixture.app.finish_boot(true).ok());
+
+    CHECK_APP(fixture.app.request_behavior(Behavior::WakeUp).ok());
+    CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Idle);
+    CHECK_APP(fixture.motion.execution_id == 0);
+
+    CHECK_APP(fixture.app.handle_idle_timeout().ok());
+    complete_motion(fixture);
+    const auto sleep_execution_id = fixture.motion.execution_id;
+    CHECK_APP(fixture.app.request_behavior(Behavior::Sleep).ok());
+    CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Sleeping);
+    CHECK_APP(fixture.motion.execution_id == sleep_execution_id);
+}
+
+void test_disconnect_cancels_active_ota_session() {
+    AppFixture fixture;
+    CHECK_APP(fixture.app.finish_boot(true).ok());
+    const OtaImageMetadata metadata{0x504C414E, 1, 2, 4, true};
+
+    CHECK_APP(fixture.app.begin_ota(metadata).ok());
+    complete_motion(fixture);
+    CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Updating);
+    CHECK_APP(fixture.app.handle_communication_disconnected().ok());
+    CHECK_APP(fixture.ota_port.abort_count == 1);
+    CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Idle);
+}
+
+void test_runtime_actuator_failure_updates_lifecycle_fault() {
+    AppFixture fixture;
+    CHECK_APP(fixture.app.finish_boot(true).ok());
+    CHECK_APP(fixture.app.request_behavior(Behavior::Happy).ok());
+    fixture.motion.poll_status = Status::failure(ErrorCode::MotionFailure);
+
+    CHECK_APP(fixture.app.tick(1000).code() == ErrorCode::MotionFailure);
+    CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Fault);
+    CHECK_APP(fixture.behavior.snapshot().state == BehaviorRunState::Fault);
+}
+
 }  // namespace
 
 int run_plant_application_tests() {
@@ -188,6 +244,9 @@ int run_plant_application_tests() {
     test_invalid_ota_does_not_move_plant();
     test_stop_is_idempotent_and_pending_ota_can_be_cancelled();
     test_ble_command_dispatch_uses_same_application_rules();
+    test_wake_and_sleep_commands_are_idempotent_in_terminal_states();
+    test_disconnect_cancels_active_ota_session();
+    test_runtime_actuator_failure_updates_lifecycle_fault();
     return failures;
 }
 

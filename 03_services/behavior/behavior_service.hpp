@@ -31,6 +31,7 @@ public:
         Behavior behavior,
         InterruptionReason reason = InterruptionReason::NormalCommand);
     Status stop();
+    Status tick(std::uint64_t now_us);
     Status handle_event(const BehaviorEvent& event);
 
     [[nodiscard]] BehaviorSnapshot snapshot() const noexcept;
@@ -38,6 +39,7 @@ public:
 
 private:
     Status start_plan(const BehaviorPlan& plan);
+    Status enter_fault_with(ErrorCode error) noexcept;
     void stop_outputs() noexcept;
     void enter_fault() noexcept;
     void complete_current() noexcept;

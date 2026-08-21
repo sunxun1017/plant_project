@@ -11,7 +11,7 @@ public:
     Status initialize();
     Status play(LightPattern pattern, std::uint32_t execution_id) override;
     Status stop() override;
-    void tick(std::uint64_t now_us);
+    Status tick(std::uint64_t now_us) override;
 
 private:
     Status set_rgb(std::uint8_t red, std::uint8_t green, std::uint8_t blue);

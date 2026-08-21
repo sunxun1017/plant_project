@@ -24,6 +24,7 @@ namespace {
 
 using Config = bsp::v1::BoardConfig;
 constexpr char kTag[] = "plant_v1";
+constexpr std::uint64_t kBootConfirmationDelayUs = 10ULL * 1000ULL * 1000ULL;
 
 EspServoAdapter motion;
 EspLedAdapter light;
@@ -54,6 +55,9 @@ OtaService ota{
 PlantApplication application{behavior, lifecycle, power, ota};
 CommunicationService communication{ble};
 std::uint64_t last_activity_us = 0;
+std::uint64_t boot_confirmation_due_us = 0;
+bool boot_confirmation_pending = false;
+bool communication_was_connected = false;
 
 static_assert(Config::Product::ota_chunk_size == kMaximumOtaChunkSize);
 
@@ -89,10 +93,14 @@ void respond_with_current_state(const Command& command, Status status) {
 
 void initialize() {
     const bool hardware_ok = initialize_hardware();
-    const Status ota_boot_status = ota_port.finalize_boot(hardware_ok);
+    const Status ota_boot_status =
+        hardware_ok ? Status::success() : ota_port.finalize_boot(false);
     const bool boot_ok = hardware_ok && ota_boot_status.ok();
     (void)application.finish_boot(boot_ok);
     last_activity_us = static_cast<std::uint64_t>(esp_timer_get_time());
+    boot_confirmation_due_us = last_activity_us + kBootConfirmationDelayUs;
+    boot_confirmation_pending = boot_ok;
+    communication_was_connected = communication.connected();
     ESP_LOGI(
         kTag,
         "boot product=%s hw=%" PRIu32 " firmware=0x%08" PRIx32 " status=%s",
@@ -105,8 +113,25 @@ void initialize() {
 [[noreturn]] void run() {
     while (true) {
         const std::uint64_t now_us = static_cast<std::uint64_t>(esp_timer_get_time());
-        light.tick(now_us);
-        haptic.tick(now_us);
+        const DeviceState lifecycle_state_before_tick = lifecycle.snapshot().state;
+        (void)application.tick(now_us);
+
+        if (boot_confirmation_pending && now_us >= boot_confirmation_due_us) {
+            const bool self_test_ok =
+                lifecycle.snapshot().state != DeviceState::Fault;
+            const Status confirmation_status = ota_port.finalize_boot(self_test_ok);
+            boot_confirmation_pending = false;
+            if (!confirmation_status.ok()) {
+                (void)application.handle_behavior_event(
+                    BehaviorEvent{BehaviorEventType::FaultRaised, 0});
+            }
+        }
+
+        const bool communication_connected = communication.connected();
+        if (communication_was_connected && !communication_connected) {
+            (void)application.handle_communication_disconnected();
+        }
+        communication_was_connected = communication_connected;
 
         TouchGesture gesture{};
         if (touch.poll(now_us / 1000ULL, gesture)) {
@@ -118,12 +143,12 @@ void initialize() {
         bool command_available = false;
         const Status receive_status = communication.poll(command, command_available);
         if (command_available) {
-            last_activity_us = now_us;
             if (!receive_status.ok()) {
                 if (receive_status.code() != ErrorCode::ProtocolFailure) {
                     respond_with_current_state(command, receive_status);
                 }
             } else {
+                last_activity_us = now_us;
                 const Status execution_status = application.handle_command(command);
                 respond_with_current_state(command, execution_status);
                 if (execution_status.ok() && command.type == CommandType::FinishOta) {
@@ -133,12 +158,12 @@ void initialize() {
             }
         }
 
-        std::uint32_t execution_id = 0;
-        if (motion.poll(now_us, execution_id)) {
-            (void)application.handle_behavior_event(
-                BehaviorEvent{BehaviorEventType::MotionCompleted, execution_id});
-            const DeviceState state = lifecycle.snapshot().state;
-            if (state == DeviceState::Idle || state == DeviceState::Sleeping) {
+        const DeviceState state_after_tick = lifecycle.snapshot().state;
+        if (state_after_tick == DeviceState::Idle ||
+            state_after_tick == DeviceState::Sleeping) {
+            const BehaviorRunState behavior_state = behavior.snapshot().state;
+            if (behavior_state == BehaviorRunState::Idle &&
+                lifecycle_state_before_tick == DeviceState::Interacting) {
                 last_activity_us = static_cast<std::uint64_t>(esp_timer_get_time());
             }
         }

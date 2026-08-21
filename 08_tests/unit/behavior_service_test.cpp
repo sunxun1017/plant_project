@@ -23,11 +23,19 @@ public:
         return Status::success();
     }
 
+    Status poll(std::uint64_t, MotionPollResult& result) override {
+        result = poll_result;
+        poll_result = MotionPollResult{};
+        return poll_status;
+    }
+
     MotionPattern last_pattern{MotionPattern::ReturnNeutral};
     std::uint32_t last_execution_id{0};
     int play_count{0};
     int stop_count{0};
     Status next_status{};
+    Status poll_status{};
+    MotionPollResult poll_result{};
 };
 
 class FakeLight final : public ILightPort {
@@ -44,11 +52,14 @@ public:
         return Status::success();
     }
 
+    Status tick(std::uint64_t) override { return tick_status; }
+
     LightPattern last_pattern{LightPattern::SlowBreathing};
     std::uint32_t last_execution_id{0};
     int play_count{0};
     int stop_count{0};
     Status next_status{};
+    Status tick_status{};
 };
 
 class FakeHaptic final : public IHapticPort {
@@ -65,11 +76,14 @@ public:
         return Status::success();
     }
 
+    Status tick(std::uint64_t) override { return tick_status; }
+
     HapticPattern last_pattern{HapticPattern::Off};
     std::uint32_t last_execution_id{0};
     int play_count{0};
     int stop_count{0};
     Status next_status{};
+    Status tick_status{};
 };
 
 int failures = 0;
@@ -176,6 +190,46 @@ void test_global_fault_is_accepted_while_idle() {
     CHECK(light.last_pattern == LightPattern::ErrorBlink);
 }
 
+void test_runtime_motion_failure_enters_fault() {
+    FakeMotion motion;
+    FakeLight light;
+    FakeHaptic haptic;
+    BehaviorService service{motion, light, haptic};
+
+    CHECK(service.start(Behavior::Happy).ok());
+    motion.poll_status = Status::failure(ErrorCode::MotionFailure);
+    CHECK(service.tick(1000).code() == ErrorCode::MotionFailure);
+    CHECK(service.snapshot().state == BehaviorRunState::Fault);
+    CHECK(service.snapshot().behavior == Behavior::Error);
+    CHECK(service.take_outcome() == BehaviorOutcome::Faulted);
+}
+
+void test_runtime_light_failure_enters_fault() {
+    FakeMotion motion;
+    FakeLight light;
+    FakeHaptic haptic;
+    BehaviorService service{motion, light, haptic};
+
+    CHECK(service.start(Behavior::Happy).ok());
+    light.tick_status = Status::failure(ErrorCode::LightingFailure);
+    CHECK(service.tick(1000).code() == ErrorCode::LightingFailure);
+    CHECK(service.snapshot().state == BehaviorRunState::Fault);
+    CHECK(motion.stop_count == 1);
+}
+
+void test_runtime_haptic_failure_enters_fault() {
+    FakeMotion motion;
+    FakeLight light;
+    FakeHaptic haptic;
+    BehaviorService service{motion, light, haptic};
+
+    CHECK(service.start(Behavior::Happy).ok());
+    haptic.tick_status = Status::failure(ErrorCode::HapticFailure);
+    CHECK(service.tick(1000).code() == ErrorCode::HapticFailure);
+    CHECK(service.snapshot().state == BehaviorRunState::Fault);
+    CHECK(haptic.stop_count == 1);
+}
+
 void test_lifecycle_sleep_and_power_modes() {
     LifecycleService lifecycle;
     CHECK(lifecycle.snapshot().state == DeviceState::Booting);
@@ -218,6 +272,9 @@ int main() {
     test_sleep_completion_requests_sleeping_lifecycle();
     test_output_failure_enters_fault_and_safe_patterns();
     test_global_fault_is_accepted_while_idle();
+    test_runtime_motion_failure_enters_fault();
+    test_runtime_light_failure_enters_fault();
+    test_runtime_haptic_failure_enters_fault();
     test_lifecycle_sleep_and_power_modes();
     test_ota_blocks_behaviors_and_returns_to_boot();
     failures += plant::test::run_ota_power_service_tests();

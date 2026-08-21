@@ -45,8 +45,7 @@ Status EspVibrationAdapter::play(HapticPattern pattern, std::uint32_t) {
     }
     pattern_ = pattern;
     started_us_ = static_cast<std::uint64_t>(esp_timer_get_time());
-    tick(started_us_);
-    return Status::success();
+    return tick(started_us_);
 }
 
 Status EspVibrationAdapter::stop() {
@@ -54,26 +53,24 @@ Status EspVibrationAdapter::stop() {
     return set_duty(0);
 }
 
-void EspVibrationAdapter::tick(std::uint64_t now_us) {
+Status EspVibrationAdapter::tick(std::uint64_t now_us) {
     const std::uint64_t elapsed = now_us - started_us_;
     switch (pattern_) {
         case HapticPattern::Off:
-            (void)set_duty(0);
-            break;
+            return set_duty(0);
         case HapticPattern::SoftPulse:
-            (void)set_duty(elapsed < 150000 ? Config::Vibration::soft_duty : 0);
-            break;
+            return set_duty(elapsed < 150000 ? Config::Vibration::soft_duty : 0);
         case HapticPattern::DoubleSoftPulse:
-            (void)set_duty((elapsed < 120000 || (elapsed >= 240000 && elapsed < 360000))
-                               ? Config::Vibration::soft_duty
-                               : 0);
-            break;
+            return set_duty(
+                (elapsed < 120000 || (elapsed >= 240000 && elapsed < 360000))
+                    ? Config::Vibration::soft_duty
+                    : 0);
         case HapticPattern::Warning:
-            (void)set_duty(elapsed < Config::Vibration::maximum_continuous_time_ms * 1000ULL
-                               ? Config::Vibration::warning_duty
-                               : 0);
-            break;
+            return set_duty(elapsed < Config::Vibration::maximum_continuous_time_ms * 1000ULL
+                                ? Config::Vibration::warning_duty
+                                : 0);
     }
+    return Status::failure(ErrorCode::HapticFailure);
 }
 
 Status EspVibrationAdapter::set_duty(std::uint8_t duty) {

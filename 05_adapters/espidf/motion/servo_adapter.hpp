@@ -11,7 +11,7 @@ public:
     Status initialize();
     Status play(MotionPattern pattern, std::uint32_t execution_id) override;
     Status stop() override;
-    bool poll(std::uint64_t now_us, std::uint32_t& completed_execution_id);
+    Status poll(std::uint64_t now_us, MotionPollResult& result) override;
 
 private:
     Status set_pulse(std::uint16_t pulse_us);

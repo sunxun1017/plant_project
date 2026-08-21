@@ -83,28 +83,34 @@ Status EspServoAdapter::stop() {
                                 : Status::failure(ErrorCode::MotionFailure);
 }
 
-bool EspServoAdapter::poll(
-    std::uint64_t now_us,
-    std::uint32_t& completed_execution_id) {
+Status EspServoAdapter::poll(std::uint64_t now_us, MotionPollResult& result) {
+    result = MotionPollResult{};
     if (!active_ || now_us < deadline_us_) {
-        return false;
+        return Status::success();
     }
     ++phase_;
     if (phase_ < phase_count()) {
-        if (!set_pulse(pulse_for_phase()).ok()) {
+        const Status pulse_status = set_pulse(pulse_for_phase());
+        if (!pulse_status.ok()) {
             active_ = false;
-            return false;
+            (void)stop();
+            return pulse_status;
         }
         deadline_us_ = now_us + Config::Servo::estimated_move_time_ms * 1000ULL;
-        return false;
+        return Status::success();
     }
 
     active_ = false;
-    completed_execution_id = execution_id_;
+    result.completed = true;
+    result.execution_id = execution_id_;
     if (pattern_ == MotionPattern::MoveToSleepPose) {
-        (void)stop();
+        const Status stop_status = stop();
+        if (!stop_status.ok()) {
+            result.completed = false;
+            return stop_status;
+        }
     }
-    return true;
+    return Status::success();
 }
 
 Status EspServoAdapter::set_pulse(std::uint16_t pulse_us) {

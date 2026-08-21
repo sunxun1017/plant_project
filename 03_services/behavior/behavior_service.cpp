@@ -77,6 +77,30 @@ Status BehaviorService::stop() {
     return Status::success();
 }
 
+Status BehaviorService::tick(std::uint64_t now_us) {
+    MotionPollResult motion_result{};
+    const Status motion_status = motion_.poll(now_us, motion_result);
+    if (!motion_status.ok()) {
+        return enter_fault_with(motion_status.code());
+    }
+
+    const Status light_status = light_.tick(now_us);
+    if (!light_status.ok()) {
+        return enter_fault_with(light_status.code());
+    }
+
+    const Status haptic_status = haptic_.tick(now_us);
+    if (!haptic_status.ok()) {
+        return enter_fault_with(haptic_status.code());
+    }
+
+    if (motion_result.completed && state_ == BehaviorRunState::Running) {
+        return handle_event(
+            BehaviorEvent{BehaviorEventType::MotionCompleted, motion_result.execution_id});
+    }
+    return Status::success();
+}
+
 Status BehaviorService::handle_event(const BehaviorEvent& event) {
     if (event.execution_id != 0 && event.execution_id != execution_id_) {
         return Status::success();
@@ -111,6 +135,13 @@ Status BehaviorService::handle_event(const BehaviorEvent& event) {
             break;
     }
     return Status::failure(ErrorCode::InternalFailure);
+}
+
+Status BehaviorService::enter_fault_with(ErrorCode error) noexcept {
+    if (state_ != BehaviorRunState::Fault) {
+        enter_fault();
+    }
+    return Status::failure(error);
 }
 
 BehaviorSnapshot BehaviorService::snapshot() const noexcept {
