@@ -1,10 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(plant_project LANGUAGES CXX)
+if(ESP_PLATFORM)
+    set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/07_products/plant_v1")
+    include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+    project(plant_v1)
+else()
+    project(plant_project LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(plant_domain STATIC
     03_services/behavior/behavior_policy.cpp
@@ -29,4 +34,5 @@ if(BUILD_TESTING)
     target_link_libraries(plant_domain_tests PRIVATE plant_domain)
     target_compile_options(plant_domain_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME plant_domain_tests COMMAND plant_domain_tests)
+endif()
 endif()
