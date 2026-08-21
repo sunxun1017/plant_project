@@ -68,6 +68,33 @@ Status PlantApplication::handle_idle_timeout() {
     return start_behavior(Behavior::Sleep, InterruptionReason::WakeSleep);
 }
 
+Status PlantApplication::handle_command(const Command& command) {
+    switch (command.type) {
+        case CommandType::Ping:
+        case CommandType::GetState:
+            return Status::success();
+        case CommandType::SetBehavior: {
+            const InterruptionReason reason =
+                command.behavior == Behavior::WakeUp || command.behavior == Behavior::Sleep
+                    ? InterruptionReason::WakeSleep
+                    : InterruptionReason::NormalCommand;
+            return request_behavior(command.behavior, reason);
+        }
+        case CommandType::StopBehavior:
+            return stop_behavior();
+        case CommandType::BeginOta:
+            return begin_ota(command.ota_metadata);
+        case CommandType::OtaChunk:
+            return write_ota_chunk(
+                command.ota_offset, command.ota_data.data(), command.ota_data_size);
+        case CommandType::FinishOta:
+            return finish_ota();
+        case CommandType::CancelOta:
+            return cancel_ota();
+    }
+    return Status::failure(ErrorCode::Unsupported);
+}
+
 Status PlantApplication::begin_ota(const OtaImageMetadata& metadata) {
     const Status validation = ota_.validate(metadata);
     if (!validation.ok()) {
@@ -109,6 +136,18 @@ Status PlantApplication::cancel_ota() {
     }
     ota_pending_ = false;
     return ota_.cancel();
+}
+
+LifecycleSnapshot PlantApplication::lifecycle_snapshot() const noexcept {
+    return lifecycle_.snapshot();
+}
+
+BehaviorSnapshot PlantApplication::behavior_snapshot() const noexcept {
+    return behavior_.snapshot();
+}
+
+OtaSnapshot PlantApplication::ota_snapshot() const noexcept {
+    return ota_.snapshot();
 }
 
 Status PlantApplication::start_behavior(Behavior behavior, InterruptionReason reason) {

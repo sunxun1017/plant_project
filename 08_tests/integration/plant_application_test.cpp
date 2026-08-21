@@ -163,6 +163,21 @@ void test_stop_is_idempotent_and_pending_ota_can_be_cancelled() {
     CHECK_APP(fixture.ota_port.begin_count == 0);
 }
 
+void test_ble_command_dispatch_uses_same_application_rules() {
+    AppFixture fixture;
+    CHECK_APP(fixture.app.finish_boot(true).ok());
+    Command command{};
+    command.type = CommandType::SetBehavior;
+    command.behavior = Behavior::Attention;
+
+    CHECK_APP(fixture.app.handle_command(command).ok());
+    CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Interacting);
+    CHECK_APP(fixture.motion.pattern == MotionPattern::LookUp);
+
+    command.type = CommandType::GetState;
+    CHECK_APP(fixture.app.handle_command(command).ok());
+}
+
 }  // namespace
 
 int run_plant_application_tests() {
@@ -171,6 +186,7 @@ int run_plant_application_tests() {
     test_ota_waits_for_safe_sleep_pose();
     test_invalid_ota_does_not_move_plant();
     test_stop_is_idempotent_and_pending_ota_can_be_cancelled();
+    test_ble_command_dispatch_uses_same_application_rules();
     return failures;
 }
 

@@ -207,6 +207,7 @@ void test_ota_blocks_behaviors_and_returns_to_boot() {
 namespace plant::test {
 int run_ota_power_service_tests();
 int run_plant_application_tests();
+int run_protocol_codec_tests();
 }
 
 int main() {
@@ -221,6 +222,7 @@ int main() {
     test_ota_blocks_behaviors_and_returns_to_boot();
     failures += plant::test::run_ota_power_service_tests();
     failures += plant::test::run_plant_application_tests();
+    failures += plant::test::run_protocol_codec_tests();
 
     if (failures != 0) {
         std::cerr << failures << " test checks failed\n";

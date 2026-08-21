@@ -2,6 +2,7 @@
 
 #include "01_core/common/status.hpp"
 #include "01_core/domain/behavior.hpp"
+#include "01_core/domain/command.hpp"
 #include "01_core/domain/event.hpp"
 #include "01_core/domain/ota.hpp"
 #include "03_services/behavior/behavior_service.hpp"
@@ -27,6 +28,7 @@ public:
     Status stop_behavior();
     Status handle_behavior_event(const BehaviorEvent& event);
     Status handle_idle_timeout();
+    Status handle_command(const Command& command);
 
     Status begin_ota(const OtaImageMetadata& metadata);
     Status write_ota_chunk(
@@ -35,6 +37,10 @@ public:
         std::size_t size);
     Status finish_ota();
     Status cancel_ota();
+
+    [[nodiscard]] LifecycleSnapshot lifecycle_snapshot() const noexcept;
+    [[nodiscard]] BehaviorSnapshot behavior_snapshot() const noexcept;
+    [[nodiscard]] OtaSnapshot ota_snapshot() const noexcept;
 
 private:
     Status start_behavior(Behavior behavior, InterruptionReason reason);
