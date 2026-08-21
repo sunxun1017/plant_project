@@ -64,10 +64,22 @@
 - 连接抖动不会重复播放 `Attention`。
 - BLE 回调只投递数据，不直接操作执行器。
 
+安装 `bleak` 后可用仓库工具执行基础联调：
+
+```bash
+python3 -m pip install bleak
+python3 09_tools/protocol_tools/plant_ble_tool.py state
+python3 09_tools/protocol_tools/plant_ble_tool.py behavior happy
+python3 09_tools/protocol_tools/plant_ble_tool.py stop
+```
+
+Linux 若扫描不到设备，先确认当前用户有 BlueZ/D-Bus 权限。也可以用
+`--address <BLE地址>` 跳过按设备名扫描。
+
 ### 3.5 低功耗
 
 1. 完成 `Sleep` 后确认 RGB 灯、振动和舵机输出关闭。
-2. 轻睡眠下验证触摸唤醒和低频 BLE 广播。
+2. 轻睡眠下验证触摸唤醒和 500–1000 ms 间隔的 BLE 广播；连接后验证链路不断开。
 3. BLE 已连接、OTA 或 Flash 写入期间，深睡眠请求必须被拒绝。
 4. 深睡眠下确认 BLE 关闭，并分别验证触摸、定时器和复位唤醒。
 5. 验证唤醒原因记录正确。
@@ -97,6 +109,20 @@
 
 OTA 开始前必须先完成安全休眠姿态；进入 `Updating` 后不得响应普通触摸行为或进入低功耗模式。
 
+开发签名和生产签名策略确认后，可用工具按 496 字节自动分片：
+
+```bash
+# 先将 BoardConfig::Product::firmware_version 改为 0x00010001 并重新构建
+python3 09_tools/protocol_tools/plant_ble_tool.py ota \
+  /tmp/plant-ble-idf-build/plant_v1.bin --version 0x00010001
+```
+
+命令行 `--version` 必须与镜像编译时的 `BoardConfig::Product::firmware_version`
+一致；它不是给既有二进制事后改版本号。
+
+当前固件中的 `Signed Image` 字段只做流程前置校验，不替代 Secure Boot 或
+ESP-IDF 签名验证；未完成生产密钥配置前只能用于开发板联调。
+
 ## 4. 稳定性验证
 
 - 连续运行至少 24 小时。
@@ -111,6 +137,7 @@ OTA 开始前必须先完成安全休眠姿态；进入 `Updating` 后不得响�
 cmake -S . -B /tmp/plant-project-build -DBUILD_TESTING=ON
 cmake --build /tmp/plant-project-build --parallel
 ctest --test-dir /tmp/plant-project-build --output-on-failure
+python3 09_tools/protocol_tools/test_plant_ble_tool.py
 ```
 
 主机测试通过只证明业务状态机和接口契约正确，不能替代真实执行器、BLE、睡眠电流和 Bootloader 回滚验证。
