@@ -27,6 +27,7 @@ public:
 
     Status enter_light_sleep() noexcept;
     Status enter_deep_sleep() noexcept;
+    Status leave_low_power() noexcept;
     Status wake(bool requires_reinitialization) noexcept;
     Status raise_fault() noexcept;
     Status reset_fault() noexcept;

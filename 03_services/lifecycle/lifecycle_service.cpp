@@ -103,6 +103,14 @@ Status LifecycleService::enter_deep_sleep() noexcept {
     return Status::success();
 }
 
+Status LifecycleService::leave_low_power() noexcept {
+    if (state_ != DeviceState::Sleeping) {
+        return Status::failure(ErrorCode::InvalidState);
+    }
+    power_mode_ = PowerMode::Active;
+    return Status::success();
+}
+
 Status LifecycleService::wake(bool requires_reinitialization) noexcept {
     if (state_ != DeviceState::Sleeping) {
         return Status::failure(ErrorCode::InvalidState);

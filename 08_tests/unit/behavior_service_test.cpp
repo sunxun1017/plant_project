@@ -204,6 +204,10 @@ void test_ota_blocks_behaviors_and_returns_to_boot() {
 
 }  // namespace
 
+namespace plant::test {
+int run_ota_power_service_tests();
+}
+
 int main() {
     test_happy_maps_to_three_outputs();
     test_duplicate_behavior_is_idempotent();
@@ -214,6 +218,7 @@ int main() {
     test_global_fault_is_accepted_while_idle();
     test_lifecycle_sleep_and_power_modes();
     test_ota_blocks_behaviors_and_returns_to_boot();
+    failures += plant::test::run_ota_power_service_tests();
 
     if (failures != 0) {
         std::cerr << failures << " test checks failed\n";
