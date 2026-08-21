@@ -4,6 +4,7 @@
 
 #include "01_core/common/status.hpp"
 #include "01_core/domain/behavior.hpp"
+#include "01_core/domain/configuration.hpp"
 #include "01_core/domain/event.hpp"
 #include "02_ports/haptic/haptic_port.hpp"
 #include "02_ports/light/light_port.hpp"
@@ -25,7 +26,11 @@ struct BehaviorSnapshot {
 
 class BehaviorService {
 public:
-    BehaviorService(IMotionPort& motion, ILightPort& light, IHapticPort& haptic) noexcept;
+    BehaviorService(
+        IMotionPort& motion,
+        ILightPort& light,
+        IHapticPort& haptic,
+        BehaviorExecutionConfig config = {}) noexcept;
 
     Status start(
         Behavior behavior,
@@ -42,17 +47,20 @@ private:
     Status enter_fault_with(ErrorCode error) noexcept;
     void stop_outputs() noexcept;
     void enter_fault() noexcept;
-    void complete_current() noexcept;
+    Status complete_current();
     [[nodiscard]] std::uint32_t next_execution_id() noexcept;
 
     IMotionPort& motion_;
     ILightPort& light_;
     IHapticPort& haptic_;
+    BehaviorExecutionConfig config_;
     BehaviorRunState state_{BehaviorRunState::Idle};
     BehaviorPlan current_plan_{};
     Behavior current_behavior_{Behavior::Calm};
     std::uint32_t execution_id_{0};
     BehaviorOutcome outcome_{BehaviorOutcome::None};
+    std::uint64_t started_us_{0};
+    bool start_time_initialized_{false};
 };
 
 }  // namespace plant

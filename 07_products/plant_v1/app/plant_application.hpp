@@ -23,6 +23,7 @@ public:
     Status finish_boot(bool self_test_passed);
     Status tick(std::uint64_t now_us);
     Status handle_touch(TouchGesture gesture);
+    Status handle_communication_connected();
     Status handle_communication_disconnected();
     Status request_behavior(
         Behavior behavior,

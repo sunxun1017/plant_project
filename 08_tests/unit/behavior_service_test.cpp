@@ -161,6 +161,34 @@ void test_sleep_completion_requests_sleeping_lifecycle() {
     CHECK(service.take_outcome() == BehaviorOutcome::CompletedSleeping);
 }
 
+void test_wakeup_completion_transitions_to_soft_breathing() {
+    FakeMotion motion;
+    FakeLight light;
+    FakeHaptic haptic;
+    BehaviorService service{motion, light, haptic};
+
+    CHECK(service.start(Behavior::WakeUp).ok());
+    const auto id = service.snapshot().execution_id;
+    CHECK(service.handle_event({BehaviorEventType::MotionCompleted, id}).ok());
+    CHECK(service.snapshot().state == BehaviorRunState::Idle);
+    CHECK(light.last_pattern == LightPattern::SoftBreathing);
+    CHECK(light.play_count == 2);
+}
+
+void test_behavior_timeout_enters_fault() {
+    FakeMotion motion;
+    FakeLight light;
+    FakeHaptic haptic;
+    BehaviorService service{motion, light, haptic, BehaviorExecutionConfig{1000}};
+
+    CHECK(service.start(Behavior::Happy).ok());
+    CHECK(service.tick(100).ok());
+    CHECK(service.tick(1099).ok());
+    CHECK(service.tick(1100).code() == ErrorCode::Timeout);
+    CHECK(service.snapshot().state == BehaviorRunState::Fault);
+    CHECK(service.take_outcome() == BehaviorOutcome::Faulted);
+}
+
 void test_output_failure_enters_fault_and_safe_patterns() {
     FakeMotion motion;
     FakeLight light;
@@ -270,6 +298,8 @@ int main() {
     test_wakeup_rejects_normal_interruption_but_accepts_sleep_request();
     test_stale_completion_is_ignored();
     test_sleep_completion_requests_sleeping_lifecycle();
+    test_wakeup_completion_transitions_to_soft_breathing();
+    test_behavior_timeout_enters_fault();
     test_output_failure_enters_fault_and_safe_patterns();
     test_global_fault_is_accepted_while_idle();
     test_runtime_motion_failure_enters_fault();

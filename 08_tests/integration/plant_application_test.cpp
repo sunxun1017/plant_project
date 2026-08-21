@@ -224,6 +224,26 @@ void test_disconnect_cancels_active_ota_session() {
     CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Idle);
 }
 
+void test_connection_plays_attention_and_wakes_sleeping_plant() {
+    AppFixture fixture;
+    CHECK_APP(fixture.app.finish_boot(true).ok());
+
+    CHECK_APP(fixture.app.handle_communication_connected().ok());
+    CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Interacting);
+    CHECK_APP(fixture.motion.pattern == MotionPattern::LookUp);
+    const auto attention_execution_id = fixture.motion.execution_id;
+    CHECK_APP(fixture.app.handle_communication_connected().ok());
+    CHECK_APP(fixture.motion.execution_id == attention_execution_id);
+    complete_motion(fixture);
+
+    CHECK_APP(fixture.app.handle_idle_timeout().ok());
+    complete_motion(fixture);
+    CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Sleeping);
+    CHECK_APP(fixture.app.handle_communication_connected().ok());
+    CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Interacting);
+    CHECK_APP(fixture.motion.pattern == MotionPattern::Wake);
+}
+
 void test_runtime_actuator_failure_updates_lifecycle_fault() {
     AppFixture fixture;
     CHECK_APP(fixture.app.finish_boot(true).ok());
@@ -246,6 +266,7 @@ int run_plant_application_tests() {
     test_ble_command_dispatch_uses_same_application_rules();
     test_wake_and_sleep_commands_are_idempotent_in_terminal_states();
     test_disconnect_cancels_active_ota_session();
+    test_connection_plays_attention_and_wakes_sleeping_plant();
     test_runtime_actuator_failure_updates_lifecycle_fault();
     return failures;
 }

@@ -34,6 +34,17 @@ Status PlantApplication::handle_touch(TouchGesture gesture) {
         InterruptionReason::Touch);
 }
 
+Status PlantApplication::handle_communication_connected() {
+    const DeviceState state = lifecycle_.snapshot().state;
+    if (state == DeviceState::Sleeping) {
+        return request_behavior(Behavior::WakeUp, InterruptionReason::WakeSleep);
+    }
+    if (state == DeviceState::Idle || state == DeviceState::Interacting) {
+        return request_behavior(Behavior::Attention, InterruptionReason::NormalCommand);
+    }
+    return Status::failure(ErrorCode::InvalidState);
+}
+
 Status PlantApplication::handle_communication_disconnected() {
     const OtaState ota_state = ota_.snapshot().state;
     if (!ota_pending_ && ota_state != OtaState::Receiving &&

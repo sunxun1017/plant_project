@@ -128,6 +128,10 @@ void initialize() {
         }
 
         const bool communication_connected = communication.connected();
+        if (!communication_was_connected && communication_connected) {
+            last_activity_us = now_us;
+            (void)application.handle_communication_connected();
+        }
         if (communication_was_connected && !communication_connected) {
             (void)application.handle_communication_disconnected();
         }

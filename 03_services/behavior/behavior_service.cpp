@@ -7,8 +7,9 @@ namespace plant {
 BehaviorService::BehaviorService(
     IMotionPort& motion,
     ILightPort& light,
-    IHapticPort& haptic) noexcept
-    : motion_(motion), light_(light), haptic_(haptic) {}
+    IHapticPort& haptic,
+    BehaviorExecutionConfig config) noexcept
+    : motion_(motion), light_(light), haptic_(haptic), config_(config) {}
 
 Status BehaviorService::start(Behavior behavior, InterruptionReason reason) {
     BehaviorPlan plan{};
@@ -38,6 +39,7 @@ Status BehaviorService::start_plan(const BehaviorPlan& plan) {
     current_behavior_ = plan.behavior;
     execution_id_ = next_execution_id();
     outcome_ = BehaviorOutcome::None;
+    start_time_initialized_ = false;
 
     Status status = motion_.play(plan.motion, execution_id_);
     if (!status.ok()) {
@@ -74,10 +76,20 @@ Status BehaviorService::stop() {
     stop_outputs();
     state_ = BehaviorRunState::Idle;
     outcome_ = BehaviorOutcome::Stopped;
+    start_time_initialized_ = false;
     return Status::success();
 }
 
 Status BehaviorService::tick(std::uint64_t now_us) {
+    if (state_ == BehaviorRunState::Running) {
+        if (!start_time_initialized_) {
+            started_us_ = now_us;
+            start_time_initialized_ = true;
+        } else if (config_.timeout_us != 0 && now_us - started_us_ >= config_.timeout_us) {
+            return enter_fault_with(ErrorCode::Timeout);
+        }
+    }
+
     MotionPollResult motion_result{};
     const Status motion_status = motion_.poll(now_us, motion_result);
     if (!motion_status.ok()) {
@@ -115,8 +127,7 @@ Status BehaviorService::handle_event(const BehaviorEvent& event) {
 
     switch (event.type) {
         case BehaviorEventType::MotionCompleted:
-            complete_current();
-            return Status::success();
+            return complete_current();
         case BehaviorEventType::StopRequested:
             return stop();
         case BehaviorEventType::MotionFailed:
@@ -163,6 +174,7 @@ void BehaviorService::stop_outputs() noexcept {
 void BehaviorService::enter_fault() noexcept {
     stop_outputs();
     state_ = BehaviorRunState::Fault;
+    start_time_initialized_ = false;
     current_behavior_ = Behavior::Error;
     outcome_ = BehaviorOutcome::Faulted;
     const std::uint32_t fault_id = next_execution_id();
@@ -171,13 +183,21 @@ void BehaviorService::enter_fault() noexcept {
     (void)haptic_.play(HapticPattern::Warning, fault_id);
 }
 
-void BehaviorService::complete_current() noexcept {
+Status BehaviorService::complete_current() {
+    if (current_behavior_ == Behavior::WakeUp) {
+        const Status light_status = light_.play(LightPattern::SoftBreathing, execution_id_);
+        if (!light_status.ok()) {
+            return enter_fault_with(light_status.code());
+        }
+    }
     state_ = BehaviorRunState::Idle;
+    start_time_initialized_ = false;
     if (current_plan_.completion == CompletionTarget::Sleeping) {
         outcome_ = BehaviorOutcome::CompletedSleeping;
     } else {
         outcome_ = BehaviorOutcome::CompletedIdle;
     }
+    return Status::success();
 }
 
 std::uint32_t BehaviorService::next_execution_id() noexcept {

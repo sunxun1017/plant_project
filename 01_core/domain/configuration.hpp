@@ -4,6 +4,10 @@
 
 namespace plant {
 
+struct BehaviorExecutionConfig {
+    std::uint64_t timeout_us{5ULL * 1000ULL * 1000ULL};
+};
+
 struct LowPowerConfig {
     bool deep_sleep_enabled{true};
     std::uint32_t deep_sleep_delay_ms{30U * 60U * 1000U};
