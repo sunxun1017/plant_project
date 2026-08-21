@@ -539,7 +539,7 @@ Protocol
 ```text
 Plant V1
 
-ESP32-C6
+ESP32-C3
 + Servo
 + RGB LED
 + Vibration Motor
@@ -552,7 +552,7 @@ ESP32-C6
 ```text
 Plant V2
 
-ESP32-C6
+ESP32-C3
 + Stepper
 + RGB LED
 + Vibration Motor
@@ -588,4 +588,3 @@ ESP32-C6
 系统真正稳定的是产品语义和业务规则。
 
 芯片、OS、通信方式和执行器都是可以替换的实现细节。
-
