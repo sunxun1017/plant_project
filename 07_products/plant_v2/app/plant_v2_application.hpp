@@ -46,6 +46,7 @@ public:
     Status handle_idle_timeout();
 
     [[nodiscard]] bool growth_motion_active() const noexcept;
+    [[nodiscard]] Behavior growth_motion_behavior() const noexcept;
     [[nodiscard]] PositionSnapshot position_snapshot() const noexcept;
     [[nodiscard]] AcousticSnapshot acoustic_snapshot() const noexcept;
     [[nodiscard]] IlluminationSnapshot illumination_snapshot() const noexcept;
@@ -61,7 +62,6 @@ private:
     Status evaluate_growth(std::uint64_t now_us);
     Status enter_fault(Status cause);
     void update_sleep_sampling();
-    void submit_or_defer_environment_credit(GrowthSource source, std::uint64_t now_us);
     [[nodiscard]] std::uint32_t next_growth_execution_id() noexcept;
 
     PlantApplication& base_;
@@ -81,7 +81,8 @@ private:
     LightArbitrationService& light_;
     std::uint32_t growth_execution_id_{0};
     bool growth_motion_active_{false};
-    GrowthSource deferred_environment_credit_{GrowthSource::None};
+    GrowthSource growth_motion_source_{GrowthSource::None};
+    bool return_to_sleep_after_decay_{false};
     std::uint64_t actuator_recovery_us_{0};
     std::uint64_t actuator_interference_until_us_{0};
     bool acoustic_sampling_enabled_{true};

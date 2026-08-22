@@ -38,7 +38,7 @@ class ProtocolCodecTest(unittest.TestCase):
             protocol.decode_response(body + bytes(4))
 
     def test_decode_v2_telemetry_response(self) -> None:
-        base = struct.pack("<BBBBBBII", 2, 0, 1, 0, 3, 0, 496, 0x00020000)
+        base = struct.pack("<BBBBBBII", 2, 0, 1, 0, 7, 0, 496, 0x00020000)
         telemetry = struct.pack(
             "<IHHBBBBHHHBHHBhHHBHHBBBBB",
             0x3F,
@@ -61,7 +61,7 @@ class ProtocolCodecTest(unittest.TestCase):
             1,
             742,
             3890,
-            2,
+            5,
             0,
             0x01,
             0x03,
@@ -78,7 +78,10 @@ class ProtocolCodecTest(unittest.TestCase):
         self.assertEqual(response.battery_level_per_mille, 742)
         self.assertTrue(response.ble_flags & 0x01)
         self.assertTrue(response.ble_flags & 0x02)
-        self.assertIn("height=625/1000", protocol.describe(response))
+        description = protocol.describe(response)
+        self.assertIn("height=625/1000", description)
+        self.assertIn("behavior=Retract", description)
+        self.assertIn("growth=InactivityDecay", description)
 
     def test_bluetooth_address_validation(self) -> None:
         self.assertEqual(protocol.bluetooth_address("44:b1:76:07:9f:26"), "44:B1:76:07:9F:26")

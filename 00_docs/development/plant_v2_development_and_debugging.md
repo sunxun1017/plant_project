@@ -80,7 +80,7 @@ d0a929a  ESP-IDF Adapter、V2 组合根、协议遥测和 BLE 工具
       ↓
 02_ports：位置、声学、光照、温湿度、电量能力契约
       ↓
-03_services：检测、迟滞、冷却、生长与灯效仲裁
+03_services：检测、迟滞、有界排队、生长/回落与灯效仲裁
       ↓
 04_protocol：V2 状态和遥测编码
       ↓
@@ -160,7 +160,7 @@ ctest --test-dir /tmp/plant-v2-host --output-on-failure
 - 讲话开始/结束迟滞和持续讲话窗口；
 - 明暗双门限、确认时间和照射积分；
 - 温湿度必须同时适宜；
-- Growth Credit 冷却、限幅、过期和单个待处理量；
+- 每个有效互动的 Growth Credit、有界待处理队列、容量拒绝、限幅和无互动衰减；
 - 位置故障、Stop、睡眠、OTA 和行为优先级；
 - V1/V2 协议兼容和损坏帧拒绝。
 
@@ -182,7 +182,8 @@ env ASAN_OPTIONS=detect_leaks=0 \
 python3 09_tools/protocol_tools/test_plant_ble_tool.py
 ```
 
-本轮 6 项协议工具测试通过，覆盖 CRC、Ping、V1/V2 响应和损坏响应拒绝。
+当前 12 项协议工具测试覆盖 CRC、Ping、V1/V2 响应、损坏响应拒绝，以及 BlueZ 扫描、
+已绑定对象回退和通知订阅重试。
 
 ## 7. ESP32-C3 交叉编译
 
@@ -377,9 +378,12 @@ python3 09_tools/protocol_tools/plant_ble_tool.py \
   --protocol-version 2 \
   --timeout 20 \
   ota /tmp/plant-v2-next.bin \
-  --version 0x00020001 \
+  --version 0x00020002 \
   --hardware-revision 2
 ```
+
+命令中的版本必须与本次镜像编译进 `ProductConfig::Product::firmware_version` 的值完全
+一致；下方 `0x00020001` 是前一轮 Fault 恢复 OTA 的历史实机证据。
 
 2026-08-22 裸板证据：设备先以 `0x00020000`、`Fault/MotionFailure`、`secure=true`、
 `bonded=true` 运行，从同一加密绑定链路接收了 586080 字节镜像；`BeginOta` 进入

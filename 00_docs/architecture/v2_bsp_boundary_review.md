@@ -40,7 +40,7 @@ BSP 文件数量少本身没有问题。一块板使用一个集中式、只含�
 | `Climate` | “适宜”温湿度区间、迟滞和促进时间片 | Product defaults → `ClimateService` |
 | `Battery` | Low/Critical 产品门限 | Product defaults → `BatteryService` |
 | `Touch` | 防抖、2 秒长按、10 秒恢复绑定 | Product interaction defaults |
-| `Growth` | 步长、四类冷却、待处理过期时间 | Product defaults → `GrowthService` |
+| `Growth` | 生长/回落步长、队列容量、无互动门限和回落周期 | Product defaults → `GrowthService` |
 | `Interaction` | 自动休眠和 System Tick | Product composition/runtime config |
 | `Power` | 是否启用深睡眠、进入深睡眠等待时间、定时唤醒周期 | Product power policy |
 | `Product` | 设备名、产品 ID、固件版本、OTA 分片大小 | Product/build/protocol config |

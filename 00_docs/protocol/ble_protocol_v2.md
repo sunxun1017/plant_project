@@ -15,8 +15,8 @@ V2 复用 V1 的 UUID、帧头、小端字节序和 CRC32。客户端把帧头 `
 
 ## 2. 命令
 
-V1 的全部命令在 V2 继续有效；`SetBehavior` 仍只接受 0–5，`Grow` 只能由四类
-`GrowthCredit` 策略触发，客户端不能绕过位置闭环和冷却时间。
+V1 的全部命令在 V2 继续有效；`SetBehavior` 仍只接受 0–5，`Grow` 和 `Retract` 只能
+由 Growth Service 的有效互动与无互动衰减策略触发，客户端不能绕过位置闭环和安全限幅。
 
 | Type | 名称 | Payload | 说明 |
 | --- | --- | --- | --- |
@@ -55,7 +55,7 @@ V1 的全部命令在 V2 继续有效；`SetBehavior` 仍只接受 0–5，`Grow
 | 44 | 1 | Battery State | 0 unavailable，1 normal，2 low，3 critical，4 fault |
 | 45 | 2 | Battery Level | 千分比，1000 = 100% |
 | 47 | 2 | Battery Voltage | mV |
-| 49 | 1 | Recent Growth Source | 0 none，1 touch，2 speech，3 light，4 climate |
+| 49 | 1 | Recent Growth Source | 0 none，1 touch，2 speech，3 light，4 climate，5 inactivity decay |
 | 50 | 1 | Pending Growth Source | 同上 |
 | 51 | 1 | Growth Flags | bit0 pending，bit1 at limit |
 | 52 | 1 | BLE Flags | bit0 encrypted，bit1 bonded |
@@ -64,6 +64,9 @@ V1 的全部命令在 V2 继续有效；`SetBehavior` 仍只接受 0–5，`Grow
 Capabilities 位图：bit0 位置反馈、bit1 声学活动、bit2 相对光照、bit3 温湿度、bit4 生长
 策略、bit5 电池、bit6 持久绑定。客户端必须先检查能力位，再解释对应字段和状态；传感器
 故障时使用枚举状态，不能把零值解释为正常测量。
+
+基础响应的 Behavior 值新增 7 `Retract`，表示无互动衰减运动；6 `Grow` 仍表示互动促进
+运动。它们只会作为状态上报，`SetBehavior` 不接受 6 或 7。
 
 ## 4. 工具
 

@@ -126,6 +126,16 @@ void test_crc_and_payload_validation() {
     frame = make_request(CommandType::SetBehavior, 2, invalid_behavior, 1);
     CHECK_PROTOCOL(protocol::Decoder::decode(frame.data(), frame.size(), command).code() ==
                    ErrorCode::InvalidArgument);
+
+    const std::uint8_t internal_growth_behaviors[]{
+        static_cast<std::uint8_t>(Behavior::Grow),
+        static_cast<std::uint8_t>(Behavior::Retract),
+    };
+    for (const std::uint8_t behavior : internal_growth_behaviors) {
+        frame = make_request(CommandType::SetBehavior, 3, &behavior, 1);
+        CHECK_PROTOCOL(protocol::Decoder::decode(frame.data(), frame.size(), command).code() ==
+                       ErrorCode::InvalidArgument);
+    }
 }
 
 void test_forget_bonds_requires_empty_payload() {

@@ -31,6 +31,7 @@ public:
     Status stop_behavior();
     Status handle_behavior_event(const BehaviorEvent& event);
     Status handle_idle_timeout();
+    Status wake_for_background_motion();
     Status handle_command(const Command& command);
 
     Status begin_ota(const OtaImageMetadata& metadata);

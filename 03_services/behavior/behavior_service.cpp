@@ -41,7 +41,9 @@ Status BehaviorService::start_plan(const BehaviorPlan& plan) {
     outcome_ = BehaviorOutcome::None;
     start_time_initialized_ = false;
 
-    Status status = motion_.play(plan.motion, execution_id_);
+    Status status = config_.expressive_motion_enabled
+                        ? motion_.play(plan.motion, execution_id_)
+                        : motion_.stop();
     if (!status.ok()) {
         enter_fault();
         return status;
@@ -62,6 +64,11 @@ Status BehaviorService::start_plan(const BehaviorPlan& plan) {
         outcome_ = BehaviorOutcome::Faulted;
     } else {
         state_ = BehaviorRunState::Running;
+        if (!config_.expressive_motion_enabled) {
+            // 仅生长产品的普通表现没有机械阶段；灯光和振动仍由各自非阻塞动画推进，
+            // 生命周期无需等待一个不存在的舵机完成事件。
+            return complete_current();
+        }
     }
     return Status::success();
 }

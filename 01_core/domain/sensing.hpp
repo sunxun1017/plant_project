@@ -121,6 +121,7 @@ enum class GrowthSource : std::uint8_t {
     SustainedSpeech,
     BrightExposure,
     SuitableClimate,
+    InactivityDecay,
 };
 
 enum class GrowthAction : std::uint8_t {

@@ -177,7 +177,8 @@ struct V2Fixture {
     V2IlluminationPort illumination_port;
     V2ClimatePort climate_port;
     V2BatteryPort battery_port;
-    BehaviorService behavior{motion, light, haptic};
+    BehaviorService behavior{
+        motion, light, haptic, BehaviorExecutionConfig{5000000, false}};
     LifecycleService lifecycle;
     PowerService power{lifecycle, power_port};
     OtaService ota{lifecycle, ota_port, {0x504C414E, 2, 0x00020000}};
@@ -250,7 +251,7 @@ void test_optional_sensor_faults_do_not_fail_critical_boot_gate() {
     CHECK_V2_APP(!fixture.app.boot_critical_sensors_ok());
 }
 
-void test_light_sleep_keeps_environment_sampling_and_defers_growth() {
+void test_light_sleep_keeps_environment_sampling_and_queues_growth() {
     V2Fixture fixture;
     CHECK_V2_APP(fixture.base.finish_boot(true).ok());
     CHECK_V2_APP(fixture.lifecycle.begin_behavior(Behavior::Sleep).ok());
@@ -270,7 +271,7 @@ void test_light_sleep_keeps_environment_sampling_and_defers_growth() {
     fixture.climate_port.queued = {
         ClimateSample{2300, 500, true}, true, Status::success()};
     CHECK_V2_APP(fixture.app.tick(600001001).ok());
-    CHECK_V2_APP(!fixture.app.growth_snapshot().pending);
+    CHECK_V2_APP(fixture.app.growth_snapshot().pending);
     CHECK_V2_APP(!fixture.app.growth_motion_active());
 
     CHECK_V2_APP(fixture.lifecycle.wake(false).ok());
@@ -322,6 +323,42 @@ void test_touch_credit_uses_measured_position_and_closes_motion_loop() {
     CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Idle);
 }
 
+void test_touch_behavior_does_not_move_growth_servo() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(true).ok());
+
+    CHECK_V2_APP(fixture.app.handle_touch(TouchGesture::SingleTap, 1000).ok());
+    CHECK_V2_APP(!fixture.motion.snapshot.moving);
+}
+
+void test_inactivity_decay_wakes_light_sleep_moves_down_and_returns_to_sleep() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(true).ok());
+    CHECK_V2_APP(fixture.app.tick(0).ok());
+    CHECK_V2_APP(fixture.lifecycle.begin_behavior(Behavior::Sleep).ok());
+    CHECK_V2_APP(
+        fixture.lifecycle.apply_behavior_outcome(BehaviorOutcome::CompletedSleeping).ok());
+    CHECK_V2_APP(fixture.lifecycle.enter_light_sleep().ok());
+
+    constexpr std::uint64_t inactivity_us =
+        6ULL * 60ULL * 60ULL * 1000ULL * 1000ULL;
+    CHECK_V2_APP(fixture.app.tick(inactivity_us).ok());
+    CHECK_V2_APP(fixture.app.growth_motion_active());
+    CHECK_V2_APP(fixture.app.growth_motion_behavior() == Behavior::Retract);
+    CHECK_V2_APP(fixture.motion.move_target == 390);
+    CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Interacting);
+
+    fixture.motion.snapshot.actual_position = 390;
+    fixture.motion.snapshot.feedback = PositionFeedbackState::Valid;
+    fixture.motion.poll_result =
+        MotionPollResult{true, fixture.motion.move_execution_id};
+    CHECK_V2_APP(fixture.app.tick(inactivity_us + 1000).ok());
+    CHECK_V2_APP(!fixture.app.growth_motion_active());
+    CHECK_V2_APP(fixture.app.tick(inactivity_us + 2000).ok());
+    CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Sleeping);
+    CHECK_V2_APP(fixture.lifecycle.snapshot().power_mode == PowerMode::LightSleep);
+}
+
 void test_idle_position_failure_enters_fault() {
     V2Fixture fixture;
     CHECK_V2_APP(fixture.base.finish_boot(true).ok());
@@ -350,9 +387,11 @@ void test_fault_recovery_ota_isolated_from_failed_motion_polling() {
 int run_plant_v2_application_tests() {
     test_boot_sensor_gate_and_telemetry_snapshots();
     test_optional_sensor_faults_do_not_fail_critical_boot_gate();
-    test_light_sleep_keeps_environment_sampling_and_defers_growth();
+    test_light_sleep_keeps_environment_sampling_and_queues_growth();
     test_acoustic_mask_includes_actuator_recovery_window();
     test_touch_credit_uses_measured_position_and_closes_motion_loop();
+    test_touch_behavior_does_not_move_growth_servo();
+    test_inactivity_decay_wakes_light_sleep_moves_down_and_returns_to_sleep();
     test_idle_position_failure_enters_fault();
     test_fault_recovery_ota_isolated_from_failed_motion_polling();
     return failures;

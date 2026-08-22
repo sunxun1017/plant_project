@@ -59,7 +59,16 @@ ERROR_NAMES = (
 )
 DEVICE_STATES = ("Booting", "Idle", "Interacting", "Sleeping", "Fault", "Updating")
 POWER_MODES = ("Active", "LightSleep", "DeepSleep")
-BEHAVIOR_NAMES = ("WakeUp", "Happy", "Attention", "Calm", "Sleep", "Error", "Grow")
+BEHAVIOR_NAMES = (
+    "WakeUp",
+    "Happy",
+    "Attention",
+    "Calm",
+    "Sleep",
+    "Error",
+    "Grow",
+    "Retract",
+)
 OTA_STATES = ("Idle", "Receiving", "Verifying", "ReadyToReboot", "Failed")
 POSITION_FEEDBACK_STATES = ("Unavailable", "Valid", "OpenCircuit", "ShortCircuit", "OutOfRange")
 MOTION_FAULTS = ("None", "FeedbackInvalid", "Stalled", "OppositeDirection", "Timeout")
@@ -67,7 +76,14 @@ ACOUSTIC_STATES = ("Quiet", "Speaking", "SustainedSpeech", "SensorFault")
 ILLUMINATION_STATES = ("Dark", "Ambient", "BrightExposure", "SensorFault")
 CLIMATE_STATES = ("TooCold", "TooHot", "TooDry", "TooHumid", "Suitable", "SensorFault")
 BATTERY_STATES = ("Unavailable", "Normal", "Low", "Critical", "SensorFault")
-GROWTH_SOURCES = ("None", "Touch", "SustainedSpeech", "BrightExposure", "SuitableClimate")
+GROWTH_SOURCES = (
+    "None",
+    "Touch",
+    "SustainedSpeech",
+    "BrightExposure",
+    "SuitableClimate",
+    "InactivityDecay",
+)
 BLUETOOTH_ADDRESS_PATTERN = re.compile(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}")
 BLUEZ_ADAPTER_PATTERN = re.compile(r"hci[0-9]+")
 

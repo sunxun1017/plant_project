@@ -80,7 +80,8 @@ bool BehaviorPolicy::try_get_plan(Behavior behavior, BehaviorPlan& plan) noexcep
             plan = kError;
             return true;
         case Behavior::Grow:
-            // Grow 由 V2 Growth Service 基于实测位置生成绝对目标，不使用固定行为计划。
+        case Behavior::Retract:
+            // Grow/Retract 由 V2 Growth Service 基于实测位置生成绝对目标，不使用固定计划。
             return false;
     }
     return false;

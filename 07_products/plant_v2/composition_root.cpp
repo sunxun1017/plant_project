@@ -1,7 +1,6 @@
 #include "07_products/plant_v2/composition_root.hpp"
 
 #include <cinttypes>
-#include <cstdlib>
 
 #include "03_services/communication/communication_service.hpp"
 #include "04_protocol/messages/protocol.hpp"
@@ -90,7 +89,14 @@ V2IlluminationAdapter illumination_port{adc};
 Aht21Adapter climate_port{i2c};
 Max17048Adapter battery_port{i2c};
 
-BehaviorService behavior{motion, light, haptic};
+BehaviorService behavior{
+    motion,
+    light,
+    haptic,
+    BehaviorExecutionConfig{
+        5ULL * 1000ULL * 1000ULL,
+        Product::Behavior::expressive_motion_enabled,
+    }};
 LifecycleService lifecycle;
 PowerService power{
     lifecycle,
@@ -151,6 +157,11 @@ GrowthService growth{GrowthConfig{
         Product::Growth::sunlight_cooldown_ms * 1000ULL,
         Product::Growth::climate_cooldown_ms * 1000ULL,
     },
+    Board::Position::safe_minimum,
+    Product::Growth::decay_step,
+    Product::Growth::inactivity_before_decay_ms * 1000ULL,
+    Product::Growth::decay_interval_ms * 1000ULL,
+    Product::Growth::maximum_pending_credits,
 }};
 PlantV2Application application{
     base_application,
@@ -233,7 +244,8 @@ void respond_with_current_state(const Command& command, Status status) {
         CommunicationState{
             lifecycle_state.state,
             lifecycle_state.power_mode,
-            application.growth_motion_active() ? Behavior::Grow : behavior_state.behavior,
+            application.growth_motion_active() ? application.growth_motion_behavior()
+                                               : behavior_state.behavior,
             ota_state.state,
             static_cast<std::uint32_t>(ota_state.received_bytes),
             Product::Product::firmware_version,
@@ -281,9 +293,9 @@ void finish_boot(bool sensors_ok, std::uint64_t now_us) {
 
 bool position_is_safe_for_deep_sleep() {
     const PositionSnapshot position = motion.position_snapshot();
-    return position.feedback == PositionFeedbackState::Valid && !position.moving &&
-           std::abs(static_cast<int>(position.actual_position) - Board::Position::sleep) <=
-               Board::Position::tolerance;
+    // Sleep 不再改变生长高度；Behavior Service 已停止 PWM 并关闭舵机电源，因此深睡
+    // 只需确认反馈仍有效且没有未完成的生长/衰减运动。
+    return position.feedback == PositionFeedbackState::Valid && !position.moving;
 }
 
 }  // namespace

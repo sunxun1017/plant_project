@@ -140,8 +140,9 @@ AHT21 ───────────→ Climate Service ───┤       �
 Touch ───────────→ Touch Service ─────┘       └→ Lighting ─────┘
 ```
 
-四类来源只提交带来源和时间戳的 `GrowthCredit`。Growth Service 统一处理冷却、限幅、
-一个待处理量、过期和优先级；执行前必须读取实际位置，再生成新的绝对目标。
+四类来源只提交带来源和时间戳的 `GrowthCredit`。Growth Service 统一处理有界待处理队列、
+限幅、无互动衰减和优先级；执行前必须读取实际位置，再生成新的绝对目标。闭环舵机
+不再承担 Wake、Happy、Attention、Calm 或 Sleep 姿态。
 
 ## 8. 器件资料
 

@@ -73,8 +73,8 @@ Status Decoder::decode(
             return no_payload(payload_size) ? Status::success()
                                             : Status::failure(ErrorCode::InvalidArgument);
         case CommandType::SetBehavior:
-            // V1 线上协议只允许 V1 行为；V2 Grow 由 GrowthCredit 策略触发，
-            // 不让旧客户端用一个枚举值绕过位置与冷却策略。
+            // 线上协议只允许普通语义行为；V2 Grow/Retract 由 Growth Service 触发，
+            // 不让客户端用枚举值绕过位置闭环、有界排队和安全限幅。
             if (payload_size != 1 || payload[0] > static_cast<std::uint8_t>(Behavior::Error)) {
                 return Status::failure(ErrorCode::InvalidArgument);
             }

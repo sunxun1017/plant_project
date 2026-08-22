@@ -9,6 +9,7 @@ namespace plant {
 
 struct BehaviorExecutionConfig {
     std::uint64_t timeout_us{5ULL * 1000ULL * 1000ULL};
+    bool expressive_motion_enabled{true};
 };
 
 struct LowPowerConfig {
@@ -65,6 +66,11 @@ struct GrowthConfig {
         5ULL * 60ULL * 1000ULL * 1000ULL,
         10ULL * 60ULL * 1000ULL * 1000ULL,
     };
+    std::uint16_t minimum_position{100};
+    std::uint16_t decay_step{10};
+    std::uint64_t inactivity_before_decay_us{6ULL * 60ULL * 60ULL * 1000ULL * 1000ULL};
+    std::uint64_t decay_interval_us{60ULL * 60ULL * 1000ULL * 1000ULL};
+    std::uint8_t maximum_pending_credits{4};
 };
 
 }  // namespace plant

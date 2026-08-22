@@ -362,8 +362,9 @@ Touch ─────────────────→ Touch Service ─�
                                                        Motion / Lighting
 ```
 
-四类输入只产生带来源和时间戳的 `GrowthCredit`。Growth Service 统一处理冷却、限幅、
-过期和执行器占用；Sensor Adapter 不直接控制舵机或灯光。
+四类输入只产生带来源和时间戳的 `GrowthCredit`。Growth Service 统一处理有界排队、限幅、
+无互动衰减和执行器占用；Sensor Adapter 不直接控制舵机或灯光。V2 闭环舵机只
+执行 Growth Service 的 `Grow`/`Retract` 绝对高度，普通语义行为只使用灯光和振动。
 
 ECM 链路只向上层提供包络音量和讲话活动，不保存、传输或持久化原始音频。GL5528 只
 表示相对明暗，AHT21 通过非阻塞 I²C 状态机读取温湿度。

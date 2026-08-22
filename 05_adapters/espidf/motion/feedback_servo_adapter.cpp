@@ -82,15 +82,14 @@ Status FeedbackServoAdapter::play(MotionPattern pattern, std::uint32_t execution
     if (!initialized_) {
         return Status::failure(ErrorCode::InvalidState);
     }
-    if (pattern == MotionPattern::StopAndHoldSafe) {
-        // 错误行为只停止输出，不清除导致它的反馈/卡滞诊断；下一次成功启动运动才清除。
-        return stop();
+    if (pattern != MotionPattern::StopAndHoldSafe) {
+        // V2/V3 的闭环舵机只负责 Growth Service 给出的绝对高度；普通产品表现不能再
+        // 通过 IMotionPort 把它移动到回中、摇摆、抬头或休眠固定位置。
+        return Status::failure(ErrorCode::Unsupported);
     }
-    pattern_ = pattern;
-    absolute_move_ = false;
-    phase_ = 0;
     execution_id_ = execution_id;
-    return start_target(target_for_phase());
+    // 错误行为只停止输出，不清除导致它的反馈/卡滞诊断；下一次成功生长运动才清除。
+    return stop();
 }
 
 Status FeedbackServoAdapter::move_to(
@@ -99,8 +98,6 @@ Status FeedbackServoAdapter::move_to(
     if (!initialized_) {
         return Status::failure(ErrorCode::InvalidState);
     }
-    absolute_move_ = true;
-    phase_ = 0;
     execution_id_ = execution_id;
     return start_target(target_position);
 }
@@ -138,21 +135,15 @@ Status FeedbackServoAdapter::poll(std::uint64_t now_us, MotionPollResult& result
             return Status::success();
         }
 
-        ++phase_;
-        if (!absolute_move_ && phase_ < phase_count()) {
-            return start_target(target_for_phase());
-        }
         snapshot_.moving = false;
         snapshot_.target_reached = true;
         expected_direction_ = 0;
         result.completed = true;
         result.execution_id = execution_id_;
-        if (!absolute_move_ && pattern_ == MotionPattern::MoveToSleepPose) {
-            const Status stop_status = stop();
-            if (!stop_status.ok()) {
-                result.completed = false;
-                return stop_status;
-            }
+        const Status stop_status = stop();
+        if (!stop_status.ok()) {
+            result.completed = false;
+            return stop_status;
         }
         return Status::success();
     }
@@ -276,38 +267,6 @@ Status FeedbackServoAdapter::fail_motion(MotionFault fault) {
     snapshot_.target_reached = false;
     (void)stop();
     return Status::failure(ErrorCode::MotionFailure);
-}
-
-std::uint16_t FeedbackServoAdapter::target_for_phase() const noexcept {
-    switch (pattern_) {
-        case MotionPattern::Wake:
-        case MotionPattern::ReturnNeutral:
-            return Config::Position::neutral;
-        case MotionPattern::GentleSway:
-            if (phase_ == 0) {
-                return Config::Position::sway_right;
-            }
-            return phase_ == 1 ? Config::Position::sway_left
-                               : Config::Position::neutral;
-        case MotionPattern::LookUp:
-            return phase_ == 0 ? Config::Position::look_up : Config::Position::neutral;
-        case MotionPattern::MoveToSleepPose:
-            return Config::Position::sleep;
-        case MotionPattern::StopAndHoldSafe:
-            return snapshot_.actual_position;
-    }
-    return snapshot_.actual_position;
-}
-
-std::uint8_t FeedbackServoAdapter::phase_count() const noexcept {
-    switch (pattern_) {
-        case MotionPattern::GentleSway:
-            return 3;
-        case MotionPattern::LookUp:
-            return 2;
-        default:
-            return 1;
-    }
 }
 
 }  // namespace plant

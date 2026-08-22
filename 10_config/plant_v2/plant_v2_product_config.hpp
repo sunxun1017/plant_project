@@ -8,6 +8,11 @@ namespace plant::config::v2 {
 // V2 产品策略默认值。这里描述用户可感知的阈值、节奏和通信策略；
 // GPIO、电气极性、器件地址与安全机械限位仍由 06_bsp 提供。
 struct ProductConfig final {
+    struct Behavior final {
+        // 闭环舵机只表示生长高度；Happy/Wake/Sleep 等表现只使用灯光与振动。
+        static constexpr bool expressive_motion_enabled = false;
+    };
+
     struct Acoustic final {
         static constexpr std::uint16_t initial_noise_floor = 80;
         static constexpr std::uint16_t speech_start_margin = 120;
@@ -51,11 +56,19 @@ struct ProductConfig final {
 
     struct Growth final {
         static constexpr std::uint16_t step = 50;
-        static constexpr std::uint32_t pending_expiry_ms = 30000;
-        static constexpr std::uint32_t touch_cooldown_ms = 30000;
-        static constexpr std::uint32_t speech_cooldown_ms = 2U * 60U * 1000U;
-        static constexpr std::uint32_t sunlight_cooldown_ms = 5U * 60U * 1000U;
-        static constexpr std::uint32_t climate_cooldown_ms = 10U * 60U * 1000U;
+        static constexpr std::uint16_t decay_step = 10;
+        static constexpr std::uint8_t maximum_pending_credits = 4;
+        // RAM 队列最多 4 项，直到执行或复位才清除；避免轻睡眠中的有效互动在唤醒前丢失。
+        static constexpr std::uint32_t pending_expiry_ms = 0;
+        // 传感 Service 已负责去抖、持续时间片和边沿去重；每个有效事件都获得一个生长量。
+        static constexpr std::uint32_t touch_cooldown_ms = 0;
+        static constexpr std::uint32_t speech_cooldown_ms = 0;
+        static constexpr std::uint32_t sunlight_cooldown_ms = 0;
+        static constexpr std::uint32_t climate_cooldown_ms = 0;
+        // 暂定 6 小时无有效互动后开始衰减，此后每小时下降一个较小步长；待样机体验标定。
+        static constexpr std::uint32_t inactivity_before_decay_ms =
+            6U * 60U * 60U * 1000U;
+        static constexpr std::uint32_t decay_interval_ms = 60U * 60U * 1000U;
     };
 
     struct Interaction final {
@@ -75,7 +88,7 @@ struct ProductConfig final {
         static constexpr char device_name[] = "Plant-V2-C3";
         static constexpr std::uint32_t product_id = 0x504C414EU;  // "PLAN"
         static constexpr std::uint32_t hardware_revision = 2;
-        static constexpr std::uint32_t firmware_version = 0x00020001U;
+        static constexpr std::uint32_t firmware_version = 0x00020002U;
         static constexpr std::size_t ota_chunk_size = 496;
     };
 
@@ -111,6 +124,12 @@ static_assert(
     ProductConfig::Climate::suitable_max_humidity_tenths_percent);
 static_assert(
     ProductConfig::Touch::factory_reset_hold_ms > ProductConfig::Touch::long_press_ms);
+static_assert(ProductConfig::Growth::decay_step < ProductConfig::Growth::step);
+static_assert(
+    ProductConfig::Growth::maximum_pending_credits > 0 &&
+    ProductConfig::Growth::maximum_pending_credits <= 4);
+static_assert(ProductConfig::Growth::inactivity_before_decay_ms > 0);
+static_assert(ProductConfig::Growth::decay_interval_ms > 0);
 static_assert(
     ProductConfig::Ble::fast_advertising_interval_min_units <=
     ProductConfig::Ble::fast_advertising_interval_max_units);

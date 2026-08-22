@@ -101,6 +101,17 @@ Status PlantApplication::handle_idle_timeout() {
     return start_behavior(Behavior::Sleep, InterruptionReason::WakeSleep);
 }
 
+Status PlantApplication::wake_for_background_motion() {
+    const LifecycleSnapshot state = lifecycle_.snapshot();
+    if (state.state != DeviceState::Sleeping ||
+        state.power_mode != PowerMode::LightSleep) {
+        return Status::failure(ErrorCode::InvalidState);
+    }
+    // 后台衰减只恢复运行电源域，不播放 WakeUp 表现；随后由 V2 Growth Service
+    // 启动受位置反馈保护的 Retract，并在完成后重新请求轻睡眠。
+    return power_.handle_wake();
+}
+
 Status PlantApplication::handle_command(const Command& command) {
     switch (command.type) {
         case CommandType::Ping:

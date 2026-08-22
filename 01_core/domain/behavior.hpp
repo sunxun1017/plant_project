@@ -12,6 +12,7 @@ enum class Behavior : std::uint8_t {
     Sleep,
     Error,
     Grow,
+    Retract,
 };
 
 enum class MotionPattern : std::uint8_t {

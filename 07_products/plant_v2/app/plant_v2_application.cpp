@@ -113,6 +113,8 @@ Status PlantV2Application::handle_command(const Command& command) {
 
     const Status stop_status = motion_.stop();
     growth_motion_active_ = false;
+    growth_motion_source_ = GrowthSource::None;
+    return_to_sleep_after_decay_ = false;
     light_.clear(LightRequestSource::Growth);
     const Status lifecycle_status =
         lifecycle_.apply_behavior_outcome(BehaviorOutcome::Stopped);
@@ -135,6 +137,12 @@ Status PlantV2Application::handle_idle_timeout() {
 
 bool PlantV2Application::growth_motion_active() const noexcept {
     return growth_motion_active_;
+}
+
+Behavior PlantV2Application::growth_motion_behavior() const noexcept {
+    return growth_motion_source_ == GrowthSource::InactivityDecay
+               ? Behavior::Retract
+               : Behavior::Grow;
 }
 
 PositionSnapshot PlantV2Application::position_snapshot() const noexcept {
@@ -184,13 +192,26 @@ Status PlantV2Application::poll_motion(std::uint64_t now_us) {
 
     growth_motion_active_ = false;
     light_.clear(LightRequestSource::Growth);
-    (void)light_.request(
-        LightRequestSource::Growth,
-        LightPattern::GrowthRise,
-        kNormalizedSensorMaximum,
-        now_us,
-        400ULL * 1000ULL);
-    return lifecycle_.apply_behavior_outcome(BehaviorOutcome::CompletedIdle);
+    const bool was_decay = growth_motion_source_ == GrowthSource::InactivityDecay;
+    growth_motion_source_ = GrowthSource::None;
+    if (!was_decay) {
+        (void)light_.request(
+            LightRequestSource::Growth,
+            LightPattern::GrowthRise,
+            kNormalizedSensorMaximum,
+            now_us,
+            400ULL * 1000ULL);
+    }
+    const Status lifecycle_status =
+        lifecycle_.apply_behavior_outcome(BehaviorOutcome::CompletedIdle);
+    if (!lifecycle_status.ok()) {
+        return lifecycle_status;
+    }
+    if (was_decay && return_to_sleep_after_decay_) {
+        return_to_sleep_after_decay_ = false;
+        return base_.handle_idle_timeout();
+    }
+    return Status::success();
 }
 
 Status PlantV2Application::poll_sensors(
@@ -235,7 +256,7 @@ Status PlantV2Application::poll_sensors(
         illumination_seen_ = true;
         const bool rgb_mask = light_.interferes_with_illumination();
         if (illumination_.process(now_us, illumination_sample, rgb_mask)) {
-            submit_or_defer_environment_credit(GrowthSource::BrightExposure, now_us);
+            (void)growth_.submit(GrowthSource::BrightExposure, now_us);
         }
         const IlluminationSnapshot snapshot = illumination_.snapshot();
         if (!sleeping && snapshot.state == IlluminationState::BrightExposure) {
@@ -258,7 +279,7 @@ Status PlantV2Application::poll_sensors(
     if (available) {
         climate_seen_ = true;
         if (climate_.process(now_us, climate_sample)) {
-            submit_or_defer_environment_credit(GrowthSource::SuitableClimate, now_us);
+            (void)growth_.submit(GrowthSource::SuitableClimate, now_us);
         }
         if (!sleeping && climate_.snapshot().state == ClimateState::Suitable) {
             (void)light_.request(
@@ -289,19 +310,23 @@ Status PlantV2Application::evaluate_growth(std::uint64_t now_us) {
         return Status::success();
     }
     const LifecycleSnapshot lifecycle = lifecycle_.snapshot();
-    if (lifecycle.state != DeviceState::Sleeping &&
-        deferred_environment_credit_ != GrowthSource::None) {
-        const Status deferred_status = growth_.submit(deferred_environment_credit_, now_us);
-        if (deferred_status.ok()) {
-            deferred_environment_credit_ = GrowthSource::None;
-        }
-    }
-    const bool foreground_available = lifecycle.state == DeviceState::Idle &&
-                                      behavior_.snapshot().state == BehaviorRunState::Idle &&
-                                      ota_.snapshot().state == OtaState::Idle;
+    const bool behavior_available =
+        behavior_.snapshot().state == BehaviorRunState::Idle &&
+        ota_.snapshot().state == OtaState::Idle;
+    const bool foreground_available =
+        lifecycle.state == DeviceState::Idle && behavior_available;
+    const bool inactivity_decay_available =
+        (lifecycle.state == DeviceState::Idle ||
+         (lifecycle.state == DeviceState::Sleeping &&
+          lifecycle.power_mode == PowerMode::LightSleep)) &&
+        behavior_available;
     GrowthDecision decision{};
     const Status status = growth_.evaluate(
-        now_us, foreground_available, motion_.position_snapshot(), decision);
+        now_us,
+        foreground_available,
+        inactivity_decay_available,
+        motion_.position_snapshot(),
+        decision);
     if (!status.ok()) {
         return enter_fault(status);
     }
@@ -317,7 +342,16 @@ Status PlantV2Application::evaluate_growth(std::uint64_t now_us) {
             500ULL * 1000ULL);
     }
 
-    const Status lifecycle_status = lifecycle_.begin_behavior(Behavior::Grow);
+    const bool decay = decision.source == GrowthSource::InactivityDecay;
+    if (decay && lifecycle.state == DeviceState::Sleeping) {
+        const Status wake_status = base_.wake_for_background_motion();
+        if (!wake_status.ok()) {
+            return wake_status;
+        }
+        return_to_sleep_after_decay_ = true;
+    }
+    const Status lifecycle_status = lifecycle_.begin_behavior(
+        decay ? Behavior::Retract : Behavior::Grow);
     if (!lifecycle_status.ok()) {
         return lifecycle_status;
     }
@@ -328,6 +362,11 @@ Status PlantV2Application::evaluate_growth(std::uint64_t now_us) {
         return enter_fault(motion_status);
     }
     growth_motion_active_ = true;
+    growth_motion_source_ = decision.source;
+    if (decay) {
+        light_.clear(LightRequestSource::Growth);
+        return Status::success();
+    }
     return light_.request(
         LightRequestSource::Growth,
         LightPattern::GrowthRise,
@@ -337,6 +376,8 @@ Status PlantV2Application::evaluate_growth(std::uint64_t now_us) {
 
 Status PlantV2Application::enter_fault(Status cause) {
     growth_motion_active_ = false;
+    growth_motion_source_ = GrowthSource::None;
+    return_to_sleep_after_decay_ = false;
     (void)motion_.stop();
     (void)base_.handle_behavior_event(
         BehaviorEvent{BehaviorEventType::FaultRaised, 0});
@@ -353,23 +394,11 @@ void PlantV2Application::update_sleep_sampling() {
     (void)acoustic_port_.set_enabled(should_enable);
     if (!should_enable) {
         // 浅睡关闭麦克风以控制功耗和隐私；光照、温湿度和电量仍低频采样，
-        // 环境奖励先合并为一个待处理事件，唤醒后再驱动舵机和灯光。
+        // 环境奖励进入最多四项的 RAM 队列，唤醒后再逐项驱动舵机和灯光。
         light_.clear(LightRequestSource::Speech);
         light_.clear(LightRequestSource::Sunlight);
         light_.clear(LightRequestSource::Climate);
     }
-}
-
-void PlantV2Application::submit_or_defer_environment_credit(
-    GrowthSource source,
-    std::uint64_t now_us) {
-    if (lifecycle_.snapshot().state == DeviceState::Sleeping) {
-        if (deferred_environment_credit_ == GrowthSource::None) {
-            deferred_environment_credit_ = source;
-        }
-        return;
-    }
-    (void)growth_.submit(source, now_us);
 }
 
 std::uint32_t PlantV2Application::next_growth_execution_id() noexcept {

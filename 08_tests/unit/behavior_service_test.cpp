@@ -111,6 +111,27 @@ void test_happy_maps_to_three_outputs() {
     CHECK(light.last_execution_id == haptic.last_execution_id);
 }
 
+void test_growth_only_profile_keeps_servo_stopped_for_regular_behaviors() {
+    FakeMotion motion;
+    FakeLight light;
+    FakeHaptic haptic;
+    BehaviorService service{
+        motion, light, haptic, BehaviorExecutionConfig{5000000, false}};
+
+    CHECK(service.start(Behavior::Happy).ok());
+    CHECK(motion.play_count == 0);
+    CHECK(motion.stop_count == 1);
+    CHECK(service.snapshot().state == BehaviorRunState::Idle);
+    CHECK(service.take_outcome() == BehaviorOutcome::CompletedIdle);
+    CHECK(light.last_pattern == LightPattern::SoftBreathing);
+    CHECK(haptic.last_pattern == HapticPattern::DoubleSoftPulse);
+
+    CHECK(service.start(Behavior::Sleep, InterruptionReason::WakeSleep).ok());
+    CHECK(motion.play_count == 0);
+    CHECK(motion.stop_count == 2);
+    CHECK(service.take_outcome() == BehaviorOutcome::CompletedSleeping);
+}
+
 void test_duplicate_behavior_is_idempotent() {
     FakeMotion motion;
     FakeLight light;
@@ -296,6 +317,7 @@ int run_sensing_growth_service_tests();
 
 int main() {
     test_happy_maps_to_three_outputs();
+    test_growth_only_profile_keeps_servo_stopped_for_regular_behaviors();
     test_duplicate_behavior_is_idempotent();
     test_wakeup_rejects_normal_interruption_but_accepts_sleep_request();
     test_stale_completion_is_ignored();

@@ -98,11 +98,6 @@ struct BoardConfig final {
         static constexpr bool increasing_raw_means_growing = true;
         static constexpr std::uint16_t safe_minimum = 100;
         static constexpr std::uint16_t safe_maximum = 900;
-        static constexpr std::uint16_t neutral = 450;
-        static constexpr std::uint16_t sleep = 120;
-        static constexpr std::uint16_t look_up = 620;
-        static constexpr std::uint16_t sway_left = 330;
-        static constexpr std::uint16_t sway_right = 570;
         static constexpr std::uint16_t tolerance = 15;
         static constexpr std::uint16_t minimum_progress = 5;
         static constexpr std::uint8_t stable_sample_count = 4;
@@ -116,7 +111,6 @@ struct BoardConfig final {
         static constexpr std::uint8_t duty_resolution_bits = 14;
         static constexpr std::uint16_t minimum_pulse_us = 700;
         static constexpr std::uint16_t maximum_pulse_us = 2300;
-        static constexpr std::uint16_t neutral_pulse_us = 1500;
         static constexpr bool power_enable_active_high = true;
     };
 
@@ -217,10 +211,7 @@ static_assert(BoardConfig::Gpio::aht21_sda != 18 && BoardConfig::Gpio::aht21_sda
 static_assert(BoardConfig::Gpio::aht21_scl != 18 && BoardConfig::Gpio::aht21_scl != 19);
 static_assert(BoardConfig::Gpio::aht21_sda < 12 || BoardConfig::Gpio::aht21_sda > 17);
 static_assert(BoardConfig::Gpio::aht21_scl < 12 || BoardConfig::Gpio::aht21_scl > 17);
-static_assert(BoardConfig::Position::safe_minimum < BoardConfig::Position::neutral);
-static_assert(BoardConfig::Position::neutral < BoardConfig::Position::safe_maximum);
-static_assert(BoardConfig::Position::sleep >= BoardConfig::Position::safe_minimum);
-static_assert(BoardConfig::Position::look_up <= BoardConfig::Position::safe_maximum);
+static_assert(BoardConfig::Position::safe_minimum < BoardConfig::Position::safe_maximum);
 static_assert(
     BoardConfig::PowerSource::minimum_capacity_mah <=
     BoardConfig::PowerSource::maximum_capacity_mah);

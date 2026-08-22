@@ -131,7 +131,7 @@ void test_climate_requires_both_values_and_uses_hysteresis() {
     CHECK_SENSING(service.snapshot().state == ClimateState::SensorFault);
 }
 
-void test_growth_uses_measured_position_and_keeps_one_pending_credit() {
+void test_each_valid_interaction_queues_a_bounded_growth_credit() {
     GrowthConfig config{};
     config.step = 75;
     config.maximum_position = 900;
@@ -140,10 +140,11 @@ void test_growth_uses_measured_position_and_keeps_one_pending_credit() {
     GrowthService service{config};
 
     CHECK_SENSING(service.submit(GrowthSource::Touch, 0).ok());
-    CHECK_SENSING(service.submit(GrowthSource::SustainedSpeech, 1).code() == ErrorCode::Busy);
+    CHECK_SENSING(service.submit(GrowthSource::SustainedSpeech, 1).ok());
     GrowthDecision decision{};
     CHECK_SENSING(service.evaluate(
                        10,
+                       false,
                        false,
                        PositionSnapshot{400, 0, PositionFeedbackState::Valid},
                        decision)
@@ -152,12 +153,40 @@ void test_growth_uses_measured_position_and_keeps_one_pending_credit() {
     CHECK_SENSING(service.evaluate(
                        20,
                        true,
+                       false,
                        PositionSnapshot{400, 0, PositionFeedbackState::Valid},
                        decision)
                        .ok());
     CHECK_SENSING(decision.action == GrowthAction::MoveToPosition);
     CHECK_SENSING(decision.target_position == 475);
     CHECK_SENSING(decision.source == GrowthSource::Touch);
+    CHECK_SENSING(service.evaluate(
+                       30,
+                       true,
+                       false,
+                       PositionSnapshot{475, 0, PositionFeedbackState::Valid},
+                       decision)
+                       .ok());
+    CHECK_SENSING(decision.action == GrowthAction::MoveToPosition);
+    CHECK_SENSING(decision.target_position == 550);
+    CHECK_SENSING(decision.source == GrowthSource::SustainedSpeech);
+}
+
+void test_growth_queue_rejects_only_the_credit_beyond_its_bound() {
+    GrowthConfig config{};
+    config.cooldown_us.fill(0);
+    config.maximum_pending_credits = 4;
+    config.pending_expiry_us = 0;
+    GrowthService service{config};
+
+    CHECK_SENSING(service.submit(GrowthSource::Touch, 1).ok());
+    CHECK_SENSING(service.submit(GrowthSource::SustainedSpeech, 2).ok());
+    CHECK_SENSING(service.submit(GrowthSource::BrightExposure, 3).ok());
+    CHECK_SENSING(service.submit(GrowthSource::SuitableClimate, 4).ok());
+    CHECK_SENSING(
+        service.submit(GrowthSource::Touch, 5).code() == ErrorCode::Busy);
+    CHECK_SENSING(service.snapshot().pending);
+    CHECK_SENSING(service.snapshot().pending_source == GrowthSource::Touch);
 }
 
 void test_growth_limit_expiry_cooldown_and_invalid_feedback() {
@@ -174,6 +203,7 @@ void test_growth_limit_expiry_cooldown_and_invalid_feedback() {
     CHECK_SENSING(service.evaluate(
                        10,
                        true,
+                       false,
                        PositionSnapshot{895, 0, PositionFeedbackState::Valid},
                        decision)
                        .ok());
@@ -185,6 +215,7 @@ void test_growth_limit_expiry_cooldown_and_invalid_feedback() {
     CHECK_SENSING(service.evaluate(
                        300,
                        true,
+                       false,
                        PositionSnapshot{500, 0, PositionFeedbackState::Valid},
                        decision)
                        .ok());
@@ -194,9 +225,68 @@ void test_growth_limit_expiry_cooldown_and_invalid_feedback() {
     CHECK_SENSING(service.evaluate(
                        401,
                        true,
+                       false,
                        PositionSnapshot{500, 0, PositionFeedbackState::OpenCircuit},
                        decision)
                        .code() == ErrorCode::MotionFailure);
+}
+
+void test_inactivity_decays_slowly_and_interaction_resets_the_timer() {
+    GrowthConfig config{};
+    config.step = 50;
+    config.minimum_position = 100;
+    config.decay_step = 25;
+    config.inactivity_before_decay_us = 1000;
+    config.decay_interval_us = 500;
+    config.cooldown_us.fill(0);
+    GrowthService service{config};
+    GrowthDecision decision{};
+
+    CHECK_SENSING(service.evaluate(
+                       0,
+                       false,
+                       true,
+                       PositionSnapshot{400, 0, PositionFeedbackState::Valid},
+                       decision)
+                       .ok());
+    CHECK_SENSING(decision.action == GrowthAction::None);
+    CHECK_SENSING(service.evaluate(
+                       1000,
+                       false,
+                       true,
+                       PositionSnapshot{400, 0, PositionFeedbackState::Valid},
+                       decision)
+                       .ok());
+    CHECK_SENSING(decision.source == GrowthSource::InactivityDecay);
+    CHECK_SENSING(decision.target_position == 375);
+
+    CHECK_SENSING(service.evaluate(
+                       1500,
+                       false,
+                       true,
+                       PositionSnapshot{375, 0, PositionFeedbackState::Valid},
+                       decision)
+                       .ok());
+    CHECK_SENSING(decision.target_position == 350);
+
+    CHECK_SENSING(service.submit(GrowthSource::Touch, 1600).ok());
+    CHECK_SENSING(service.evaluate(
+                       1601,
+                       true,
+                       true,
+                       PositionSnapshot{350, 0, PositionFeedbackState::Valid},
+                       decision)
+                       .ok());
+    CHECK_SENSING(decision.source == GrowthSource::Touch);
+    CHECK_SENSING(decision.target_position == 400);
+    CHECK_SENSING(service.evaluate(
+                       2599,
+                       false,
+                       true,
+                       PositionSnapshot{400, 0, PositionFeedbackState::Valid},
+                       decision)
+                       .ok());
+    CHECK_SENSING(decision.action == GrowthAction::None);
 }
 
 void test_battery_levels_and_sensor_fault() {
@@ -258,8 +348,10 @@ int run_sensing_growth_service_tests() {
     test_illumination_confirmation_interval_and_hysteresis();
     test_illumination_masks_rgb_self_light();
     test_climate_requires_both_values_and_uses_hysteresis();
-    test_growth_uses_measured_position_and_keeps_one_pending_credit();
+    test_each_valid_interaction_queues_a_bounded_growth_credit();
+    test_growth_queue_rejects_only_the_credit_beyond_its_bound();
     test_growth_limit_expiry_cooldown_and_invalid_feedback();
+    test_inactivity_decays_slowly_and_interaction_resets_the_timer();
     test_battery_levels_and_sensor_fault();
     test_light_priority_and_expiry_restore_background();
     return failures;
