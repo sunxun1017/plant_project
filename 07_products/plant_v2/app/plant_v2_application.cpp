@@ -45,7 +45,7 @@ Status PlantV2Application::tick(std::uint64_t now_us) {
     if (!base_status.ok()) {
         return base_status;
     }
-    update_sleep_sampling();
+    update_acoustic_sampling();
     if (lifecycle_.snapshot().state == DeviceState::Updating) {
         // OTA 期间只保留基础通信和输出安全维护。尤其是从 Fault 恢复时，不再轮询已故障
         // 的位置反馈，否则同一硬件故障会立即把 Updating 打回 Fault 并中断传输。
@@ -391,8 +391,10 @@ Status PlantV2Application::enter_fault(Status cause) {
     return cause;
 }
 
-void PlantV2Application::update_sleep_sampling() {
-    const bool should_enable = lifecycle_.snapshot().state != DeviceState::Sleeping;
+void PlantV2Application::update_acoustic_sampling() {
+    const DeviceState state = lifecycle_.snapshot().state;
+    const bool should_enable = state != DeviceState::Sleeping && state != DeviceState::Fault &&
+                               state != DeviceState::Updating;
     if (should_enable == acoustic_sampling_enabled_) {
         return;
     }
@@ -400,8 +402,8 @@ void PlantV2Application::update_sleep_sampling() {
     acoustic_.set_enabled(should_enable);
     (void)acoustic_port_.set_enabled(should_enable);
     if (!should_enable) {
-        // 浅睡关闭麦克风以控制功耗和隐私；光照、温湿度和电量仍低频采样，
-        // 环境奖励进入最多四项的 RAM 队列，唤醒后再逐项驱动舵机和灯光。
+        // 浅睡、故障和 OTA 均关闭麦克风以控制功耗、自噪和隐私；光照、温湿度与
+        // 电量在浅睡中仍低频采样，环境奖励唤醒后再逐项驱动舵机和灯光。
         light_.clear(LightRequestSource::Speech);
         light_.clear(LightRequestSource::Sunlight);
         light_.clear(LightRequestSource::Climate);

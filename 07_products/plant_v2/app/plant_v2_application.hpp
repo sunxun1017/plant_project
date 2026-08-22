@@ -63,7 +63,7 @@ private:
     Status poll_sensors(std::uint64_t now_us, bool actuator_interference);
     Status evaluate_growth(std::uint64_t now_us);
     Status enter_fault(Status cause);
-    void update_sleep_sampling();
+    void update_acoustic_sampling();
     [[nodiscard]] std::uint32_t next_growth_execution_id() noexcept;
 
     PlantApplication& base_;

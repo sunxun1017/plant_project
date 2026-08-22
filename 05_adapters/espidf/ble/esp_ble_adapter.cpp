@@ -191,6 +191,7 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
                 self->connected_.store(true);
                 self->secure_.store(false);
                 self->bonded_.store(false);
+                self->signal_runtime_event();
                 if (ble_gap_security_initiate(event->connect.conn_handle) != 0) {
                     (void)ble_gap_terminate(
                         event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
@@ -208,6 +209,7 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
             self->secure_.store(false);
             self->bonded_.store(false);
             self->connection_handle_.store(BLE_HS_CONN_HANDLE_NONE);
+            self->signal_runtime_event();
             (void)self->start_advertising(AdvertisingMode::Fast);
             return 0;
         case BLE_GAP_EVENT_ADV_COMPLETE:
@@ -234,6 +236,7 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
                 self->secure_.store(false);
                 self->bonded_.store(false);
             }
+            self->signal_runtime_event();
             return 0;
         }
         case BLE_GAP_EVENT_SUBSCRIBE:
@@ -304,6 +307,7 @@ void EspBleAdapter::on_reset(int reason) {
         instance_->connected_.store(false);
         instance_->secure_.store(false);
         instance_->bonded_.store(false);
+        instance_->signal_runtime_event();
     }
 }
 
@@ -363,7 +367,15 @@ bool EspBleAdapter::enqueue(const std::uint8_t* data, std::size_t size) {
     for (std::size_t index = 0; index < size; ++index) {
         item.data[index] = data[index];
     }
-    return xQueueSend(queue_, &item, 0) == pdTRUE;
+    if (xQueueSend(queue_, &item, 0) != pdTRUE) {
+        return false;
+    }
+    signal_runtime_event();
+    return true;
+}
+
+void EspBleAdapter::signal_runtime_event() const noexcept {
+    config_.runtime_event.notify(false);
 }
 
 }  // namespace plant

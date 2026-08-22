@@ -17,6 +17,9 @@ public:
         std::uint64_t now_us,
         ClimateSample& sample,
         bool& available) override;
+    [[nodiscard]] std::uint32_t next_poll_delay_ms(
+        std::uint64_t now_us,
+        std::uint32_t maximum_delay_ms) const noexcept;
 
 private:
     enum class State : std::uint8_t {
@@ -30,6 +33,12 @@ private:
     Status finish_measurement(ClimateSample& sample);
     void record_failure(
         std::uint64_t now_us,
+        ClimateSample& sample,
+        bool& available) noexcept;
+    void schedule_retry(
+        std::uint64_t now_us,
+        std::uint32_t retry_delay_ms,
+        State next_state,
         ClimateSample& sample,
         bool& available) noexcept;
     [[nodiscard]] static std::uint8_t crc8(const std::uint8_t* data, std::size_t size) noexcept;

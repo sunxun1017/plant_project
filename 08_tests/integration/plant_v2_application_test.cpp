@@ -1,8 +1,10 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "05_adapters/common/bounded_retry_backoff.hpp"
 #include "10_config/plant_v2/plant_v2_product_config.hpp"
 #include "07_products/plant_v2/app/plant_v2_application.hpp"
+#include "07_products/plant_v2/runtime_schedule.hpp"
 
 namespace plant::test {
 namespace {
@@ -436,6 +438,50 @@ void test_fault_recovery_ota_isolated_from_failed_motion_polling() {
     fixture.motion.poll_status = Status::failure(ErrorCode::MotionFailure);
     CHECK_V2_APP(fixture.app.tick(1000).ok());
     CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Updating);
+    CHECK_V2_APP(!fixture.acoustic_port.enabled);
+}
+
+void test_fault_disables_acoustic_sampling() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(false).ok());
+    CHECK_V2_APP(fixture.app.tick(1000).ok());
+    CHECK_V2_APP(!fixture.acoustic_port.enabled);
+}
+
+void test_runtime_schedule_slows_only_safe_states() {
+    constexpr product::v2::RuntimeScheduleConfig config{20, 500, 1000};
+    CHECK_V2_APP(
+        product::v2::base_runtime_delay_ms(DeviceState::Idle, false, false, config) == 20);
+    CHECK_V2_APP(
+        product::v2::base_runtime_delay_ms(DeviceState::Interacting, false, false, config) ==
+        20);
+    CHECK_V2_APP(
+        product::v2::base_runtime_delay_ms(DeviceState::Fault, false, false, config) == 500);
+    CHECK_V2_APP(
+        product::v2::base_runtime_delay_ms(DeviceState::Sleeping, false, false, config) ==
+        1000);
+    CHECK_V2_APP(
+        product::v2::base_runtime_delay_ms(DeviceState::Sleeping, true, false, config) == 20);
+    CHECK_V2_APP(
+        product::v2::base_runtime_delay_ms(DeviceState::Sleeping, false, true, config) == 20);
+}
+
+void test_bounded_retry_switches_to_fault_backoff() {
+    const BoundedRetryDecision first = bounded_retry_backoff(0, 3, 100, 30000);
+    CHECK_V2_APP(first.next_failure_count == 1);
+    CHECK_V2_APP(first.delay_ms == 100);
+    CHECK_V2_APP(!first.report_failure);
+
+    const BoundedRetryDecision second =
+        bounded_retry_backoff(first.next_failure_count, 3, 100, 30000);
+    CHECK_V2_APP(second.next_failure_count == 2);
+    CHECK_V2_APP(!second.report_failure);
+
+    const BoundedRetryDecision exhausted =
+        bounded_retry_backoff(second.next_failure_count, 3, 100, 30000);
+    CHECK_V2_APP(exhausted.next_failure_count == 0);
+    CHECK_V2_APP(exhausted.delay_ms == 30000);
+    CHECK_V2_APP(exhausted.report_failure);
 }
 
 }  // namespace
@@ -452,6 +498,9 @@ int run_plant_v2_application_tests() {
     test_unconfirmed_idle_position_glitch_pauses_tick_without_fault();
     test_idle_position_failure_enters_fault();
     test_fault_recovery_ota_isolated_from_failed_motion_polling();
+    test_fault_disables_acoustic_sampling();
+    test_runtime_schedule_slows_only_safe_states();
+    test_bounded_retry_switches_to_fault_backoff();
     return failures;
 }
 

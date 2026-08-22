@@ -144,6 +144,8 @@ struct BoardConfig final {
         static constexpr std::uint32_t sample_period_ms = 2000;
         static constexpr std::uint32_t transfer_timeout_ms = 20;
         static constexpr std::uint8_t maximum_retries = 3;
+        // 连续失败后降低探测频率，避免未焊/损坏的可选传感器持续唤醒 CPU 和 I²C。
+        static constexpr std::uint32_t fault_retry_period_ms = 30000;
         static constexpr bool crc_required = true;
     };
 
@@ -216,6 +218,9 @@ static_assert(BoardConfig::Gpio::aht21_sda < 12 || BoardConfig::Gpio::aht21_sda 
 static_assert(BoardConfig::Gpio::aht21_scl < 12 || BoardConfig::Gpio::aht21_scl > 17);
 static_assert(BoardConfig::Position::safe_minimum < BoardConfig::Position::safe_maximum);
 static_assert(BoardConfig::Position::idle_invalid_sample_count > 0);
+static_assert(BoardConfig::Climate::maximum_retries > 0);
+static_assert(
+    BoardConfig::Climate::fault_retry_period_ms >= BoardConfig::Climate::sample_period_ms);
 static_assert(
     BoardConfig::PowerSource::minimum_capacity_mah <=
     BoardConfig::PowerSource::maximum_capacity_mah);

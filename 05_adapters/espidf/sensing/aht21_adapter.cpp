@@ -1,8 +1,10 @@
 #include "05_adapters/espidf/sensing/aht21_adapter.hpp"
 
+#include <algorithm>
 #include <array>
 #include <limits>
 
+#include "05_adapters/common/bounded_retry_backoff.hpp"
 #include "06_bsp/plant_v2/plant_v2_board.hpp"
 #include "esp_timer.h"
 
@@ -64,14 +66,12 @@ Status Aht21Adapter::poll(
         std::uint8_t status_byte = 0;
         const Status status = read_status(status_byte);
         if (!status.ok()) {
-            ++retry_count_;
-            if (retry_count_ >= Config::Climate::maximum_retries) {
-                sample = ClimateSample{};
-                available = true;
-                retry_count_ = 0;
-            }
-            state_ = State::PowerUp;
-            due_us_ = now_us + Config::Climate::power_up_delay_ms * 1000ULL;
+            schedule_retry(
+                now_us,
+                Config::Climate::power_up_delay_ms,
+                State::PowerUp,
+                sample,
+                available);
             return Status::success();
         }
         if ((status_byte & kReadyMask) != kReadyMask) {
@@ -86,14 +86,12 @@ Status Aht21Adapter::poll(
                 record_failure(now_us, sample, available);
                 return Status::success();
             }
-            ++retry_count_;
-            if (retry_count_ >= Config::Climate::maximum_retries) {
-                sample = ClimateSample{};
-                available = true;
-                retry_count_ = 0;
-            }
-            state_ = State::PowerUp;
-            due_us_ = now_us + Config::Climate::power_up_delay_ms * 1000ULL;
+            schedule_retry(
+                now_us,
+                Config::Climate::power_up_delay_ms,
+                State::PowerUp,
+                sample,
+                available);
             return Status::success();
         }
         state_ = State::Idle;
@@ -122,6 +120,20 @@ Status Aht21Adapter::poll(
     state_ = State::Idle;
     due_us_ = now_us + Config::Climate::sample_period_ms * 1000ULL;
     return Status::success();
+}
+
+std::uint32_t Aht21Adapter::next_poll_delay_ms(
+    std::uint64_t now_us,
+    std::uint32_t maximum_delay_ms) const noexcept {
+    if (!initialized_ || !enabled_ || maximum_delay_ms == 0) {
+        return maximum_delay_ms;
+    }
+    if (due_us_ <= now_us) {
+        return 1;
+    }
+    const std::uint64_t remaining_ms = (due_us_ - now_us + 999ULL) / 1000ULL;
+    return static_cast<std::uint32_t>(
+        std::min<std::uint64_t>(remaining_ms, maximum_delay_ms));
 }
 
 Status Aht21Adapter::read_status(std::uint8_t& status) const {
@@ -184,16 +196,32 @@ void Aht21Adapter::record_failure(
     std::uint64_t now_us,
     ClimateSample& sample,
     bool& available) noexcept {
-    ++retry_count_;
-    if (retry_count_ >= Config::Climate::maximum_retries) {
+    schedule_retry(
+        now_us,
+        Config::Climate::measurement_time_ms,
+        State::Idle,
+        sample,
+        available);
+}
+
+void Aht21Adapter::schedule_retry(
+    std::uint64_t now_us,
+    std::uint32_t retry_delay_ms,
+    State next_state,
+    ClimateSample& sample,
+    bool& available) noexcept {
+    const BoundedRetryDecision decision = bounded_retry_backoff(
+        retry_count_,
+        Config::Climate::maximum_retries,
+        retry_delay_ms,
+        Config::Climate::fault_retry_period_ms);
+    retry_count_ = decision.next_failure_count;
+    if (decision.report_failure) {
         sample = ClimateSample{};
         available = true;
-        retry_count_ = 0;
-        due_us_ = now_us + Config::Climate::sample_period_ms * 1000ULL;
-    } else {
-        due_us_ = now_us + Config::Climate::measurement_time_ms * 1000ULL;
     }
-    state_ = State::Idle;
+    due_us_ = now_us + decision.delay_ms * 1000ULL;
+    state_ = next_state;
 }
 
 std::uint8_t Aht21Adapter::crc8(const std::uint8_t* data, std::size_t size) noexcept {

@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "02_ports/ble/ble_port.hpp"
+#include "05_adapters/espidf/runtime/runtime_event_signal.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
@@ -27,6 +28,7 @@ struct EspBleConfig {
     std::uint32_t fast_advertising_duration_ms;
     std::uint16_t slow_advertising_interval_min_units;
     std::uint16_t slow_advertising_interval_max_units;
+    EspRuntimeEventSignal runtime_event{};
 };
 
 class EspBleAdapter final : public IBlePort {
@@ -63,6 +65,7 @@ private:
 
     Status start_advertising(AdvertisingMode mode);
     bool enqueue(const std::uint8_t* data, std::size_t size);
+    void signal_runtime_event() const noexcept;
 
     static EspBleAdapter* instance_;
     static constexpr std::size_t kMaximumReceiveQueueDepth = 4;

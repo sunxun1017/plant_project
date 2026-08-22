@@ -1,5 +1,6 @@
 #include "07_products/plant_v2/composition_root.hpp"
 
+#include <algorithm>
 #include <cinttypes>
 
 #include "03_services/communication/communication_service.hpp"
@@ -18,6 +19,7 @@
 #include "06_bsp/plant_v2/plant_v2_board.hpp"
 #include "07_products/plant_v1/app/plant_application.hpp"
 #include "07_products/plant_v2/app/plant_v2_application.hpp"
+#include "07_products/plant_v2/runtime_schedule.hpp"
 #include "10_config/plant_v2/plant_v2_product_config.hpp"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -33,6 +35,20 @@ using Product = config::v2::ProductConfig;
 constexpr char kTag[] = "plant_v2";
 constexpr std::uint64_t kBootSensorTimeoutUs = 5ULL * 1000ULL * 1000ULL;
 constexpr std::uint64_t kBootConfirmationDelayUs = 10ULL * 1000ULL * 1000ULL;
+TaskHandle_t system_task_handle = nullptr;
+
+void signal_system_task(void*, bool from_isr) noexcept {
+    if (system_task_handle == nullptr) {
+        return;
+    }
+    if (from_isr) {
+        BaseType_t higher_priority_task_woken = pdFALSE;
+        vTaskNotifyGiveFromISR(system_task_handle, &higher_priority_task_woken);
+        portYIELD_FROM_ISR(higher_priority_task_woken);
+        return;
+    }
+    xTaskNotifyGive(system_task_handle);
+}
 
 V2AdcSampler adc;
 V2I2cBus i2c;
@@ -63,6 +79,7 @@ EspTouchAdapter touch{EspTouchConfig{
     Product::Touch::long_press_ms,
     Product::Touch::factory_reset_hold_ms,
     Board::Touch::enable_internal_pull_down,
+    EspRuntimeEventSignal{signal_system_task, nullptr},
 }};
 EspBleAdapter ble{EspBleConfig{
     Product::Product::device_name,
@@ -76,6 +93,7 @@ EspBleAdapter ble{EspBleConfig{
     Product::Ble::fast_advertising_duration_ms,
     Product::Ble::slow_advertising_interval_min_units,
     Product::Ble::slow_advertising_interval_max_units,
+    EspRuntimeEventSignal{signal_system_task, nullptr},
 }};
 EspPowerAdapter power_port{EspPowerConfig{
     Board::Gpio::touch_input,
@@ -216,12 +234,35 @@ void report_event_failure(const char* operation, Status status) {
 }
 
 std::uint32_t next_loop_delay_ms(std::uint64_t now_us) {
-    if (lifecycle.snapshot().state != DeviceState::Sleeping || haptic.active() ||
-        now_us < last_activity_us ||
-        now_us - last_activity_us < Product::Interaction::sleep_transition_ms * 1000ULL) {
-        return Product::Interaction::system_tick_ms;
+    const DeviceState state = lifecycle.snapshot().state;
+    const bool sleep_transition_active =
+        state == DeviceState::Sleeping &&
+        (now_us < last_activity_us ||
+         now_us - last_activity_us < Product::Interaction::sleep_transition_ms * 1000ULL);
+    std::uint32_t delay_ms = base_runtime_delay_ms(
+        state,
+        haptic.active(),
+        sleep_transition_active,
+        RuntimeScheduleConfig{
+            Product::Interaction::system_tick_ms,
+            Product::Interaction::fault_tick_ms,
+            Product::Interaction::sleeping_tick_ms,
+        });
+    delay_ms = touch.next_poll_delay_ms(now_us / 1000ULL, delay_ms);
+    if (state == DeviceState::Sleeping) {
+        delay_ms = climate_port.next_poll_delay_ms(now_us, delay_ms);
     }
-    return Product::Interaction::sleeping_tick_ms;
+    return delay_ms;
+}
+
+void wait_for_runtime_event(std::uint32_t maximum_delay_ms) {
+    TickType_t delay_ticks = pdMS_TO_TICKS(maximum_delay_ms);
+    if (delay_ticks == 0) {
+        delay_ticks = 1;
+    }
+    // 每次只消费一个通知计数。若 BLE 在一次业务 Tick 内连续入队多个帧，剩余计数会让
+    // 后续循环立即继续处理，不会因为清空通知而把队列中的命令拖到兜底超时。
+    (void)ulTaskNotifyTake(pdFALSE, delay_ticks);
 }
 
 bool initialize_hardware() {
@@ -333,6 +374,7 @@ bool position_is_safe_for_deep_sleep() {
 }  // namespace
 
 void initialize() {
+    system_task_handle = xTaskGetCurrentTaskHandle();
 #if !CONFIG_SECURE_SIGNED_ON_UPDATE
     ESP_LOGW(
         kTag,
@@ -357,7 +399,7 @@ void initialize() {
                 now_us - boot_started_us >= kBootSensorTimeoutUs) {
                 finish_boot(application.boot_critical_sensors_ok(), now_us);
             }
-            vTaskDelay(pdMS_TO_TICKS(Product::Interaction::system_tick_ms));
+            wait_for_runtime_event(Product::Interaction::system_tick_ms);
             continue;
         }
 
@@ -470,7 +512,7 @@ void initialize() {
                     false,
                 }));
         }
-        vTaskDelay(pdMS_TO_TICKS(next_loop_delay_ms(now_us)));
+        wait_for_runtime_event(next_loop_delay_ms(now_us));
     }
 }
 

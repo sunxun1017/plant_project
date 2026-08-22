@@ -74,10 +74,13 @@ struct ProductConfig final {
     struct Interaction final {
         static constexpr std::uint32_t automatic_sleep_ms = 5U * 60U * 1000U;
         static constexpr std::uint32_t system_tick_ms = 20;
+        // ErrorBlink 每 500 ms 换相；Fault 不再以 20 ms 空转，但仍保留可见故障反馈。
+        static constexpr std::uint32_t fault_tick_ms = 500;
         // 入睡后的 1 秒仍用活动 Tick 完成渐灭和短振动，之后降低周期唤醒频率。
-        // 250 ms 仍能推进 AHT21 的非阻塞状态机；整机平均电流必须继续上板实测。
+        // BLE/触摸会主动通知 System Task，AHT21 的 85 ms 测量截止时间单独参与调度；
+        // 稳定睡眠的兜底 Tick 因而可降到 1 秒。整机平均电流仍必须上板实测。
         static constexpr std::uint32_t sleep_transition_ms = 1000;
-        static constexpr std::uint32_t sleeping_tick_ms = 250;
+        static constexpr std::uint32_t sleeping_tick_ms = 1000;
     };
 
     struct Power final {
@@ -92,7 +95,7 @@ struct ProductConfig final {
         static constexpr char device_name[] = "Plant-V2-C3";
         static constexpr std::uint32_t product_id = 0x504C414EU;  // "PLAN"
         static constexpr std::uint32_t hardware_revision = 2;
-        static constexpr std::uint32_t firmware_version = 0x00020003U;
+        static constexpr std::uint32_t firmware_version = 0x00020004U;
         static constexpr std::size_t ota_chunk_size = 496;
     };
 
@@ -136,6 +139,9 @@ static_assert(ProductConfig::Growth::inactivity_before_decay_ms > 0);
 static_assert(ProductConfig::Growth::decay_interval_ms > 0);
 static_assert(
     ProductConfig::Interaction::sleeping_tick_ms >=
+    ProductConfig::Interaction::system_tick_ms);
+static_assert(
+    ProductConfig::Interaction::fault_tick_ms >=
     ProductConfig::Interaction::system_tick_ms);
 static_assert(
     ProductConfig::Ble::fast_advertising_interval_min_units <=
