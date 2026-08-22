@@ -275,7 +275,7 @@ BOOT 按键和外设复位电平必须在最终原理图上验证。
 解决：所有共享 LEDC 的 Adapter 统一使用 `LEDC_USE_XTAL_CLK`，各定时器仍保留独立频率
 和分辨率。V1/V2 均重新交叉编译，并在板上确认不再出现时钟冲突。
 
-### 9.4 GATT 服务注册资源错误
+### 9.4 GATT 服务注册与安全模式冲突
 
 现象：NimBLE 注册 GATT 服务时出现资源错误，通知特征无法正常工作。
 
@@ -285,14 +285,24 @@ BOOT 按键和外设复位电平必须在最终原理图上验证。
 解决：响应特征增加 `access_cb`，CCCD 订阅要求加密，发送前继续检查 connected、secure
 和 bonded。修复后服务注册错误消失。
 
+后续真机又出现 CCCD 或命令写入返回 ATT `Unlikely Error (0x0e)`。串口确认链路已经
+`encrypted=1`、`bonded=1`、`key_size=16`，但 `authenticated=0`。原因是设备使用
+`NoInputNoOutput` 的 Secure Connections Just Works，本身无法提供 MITM 身份认证；同时
+`CONFIG_BT_NIMBLE_SM_SC_ONLY=1` 会把所有要求加密的 GATT 属性提升为安全等级 4，强制要求
+`authenticated=1`，两项配置在逻辑上互相矛盾。
+
+最终保留 Secure Connections、NVS 绑定以及命令/CCCD 的加密要求，把 SC Only 设为 0。
+这仍是 128 位密钥的加密绑定，但不虚假宣称 Just Works 具备 MITM 认证。若量产需要所有权
+证明，应增加物理确认或应用层随机挑战，不能重新打开一个硬件能力无法满足的开关。
+
 ### 9.5 “手机记住设备，C3 是否不用记住”的误区
 
 BLE 绑定要求双方都保存长期材料。手机/电脑保存设备身份和密钥，C3 的 NimBLE 把 LTK、
 IRK 和 CCCD 等写入 NVS。只让一端记住，重启后无法恢复加密链路。
 
-本轮通过只读导出 NVS，确认存在 NimBLE bond 命名空间；普通复位和重新烧录应用后，曾
-成功完成一次加密重连。整片擦除、精确擦除 NVS、NVS 损坏恢复、`ForgetBonds` 或本地
-10 秒恢复才会让 C3 忘记绑定。
+本轮通过只读导出 NVS，确认存在 NimBLE bond 命名空间；普通重新烧录应用和硬复位后，
+都使用原有绑定完成加密重连，状态遥测返回 `secure=true`、`bonded=true`。整片擦除、
+精确擦除 NVS、NVS 损坏恢复、`ForgetBonds` 或本地 10 秒恢复才会让 C3 忘记绑定。
 
 ### 9.6 拥挤 BLE 环境中的扫描、连接和配对超时
 

@@ -100,7 +100,7 @@ Status EspBleAdapter::initialize() {
                                BLE_GATT_CHR_F_WRITE_ENC;
     characteristics[1].uuid = &response_uuid.u;
     // NimBLE 要求每个 Characteristic 都提供 access_cb，即使该值只用于服务端通知。
-    // CCCD 订阅也必须在加密链路上完成，实际发送还会再次检查 connected/secure/bonded。
+    // CCCD 写入要求加密，实际发送还会再次检查 connected/secure/bonded。
     characteristics[1].access_cb = gatt_access;
     characteristics[1].val_handle = &response_value_handle_;
     characteristics[1].flags =
@@ -222,6 +222,12 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
             ble_gap_conn_desc descriptor{};
             if (event->enc_change.status == 0 &&
                 ble_gap_conn_find(event->enc_change.conn_handle, &descriptor) == 0) {
+                ESP_LOGI(kTag,
+                         "BLE security encrypted=%u authenticated=%u bonded=%u key_size=%u",
+                         descriptor.sec_state.encrypted,
+                         descriptor.sec_state.authenticated,
+                         descriptor.sec_state.bonded,
+                         descriptor.sec_state.key_size);
                 self->secure_.store(descriptor.sec_state.encrypted != 0);
                 self->bonded_.store(descriptor.sec_state.bonded != 0);
             } else {
@@ -230,6 +236,12 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
             }
             return 0;
         }
+        case BLE_GAP_EVENT_SUBSCRIBE:
+            ESP_LOGI(kTag, "BLE subscription handle=%u notify=%u indicate=%u",
+                     event->subscribe.attr_handle,
+                     event->subscribe.cur_notify,
+                     event->subscribe.cur_indicate);
+            return 0;
         case BLE_GAP_EVENT_REPEAT_PAIRING:
             // 不自动删除已持久化的绑定；解绑必须走显式的本机恢复流程。
             ESP_LOGW(kTag, "BLE peer requested repeat pairing; preserving existing bond");
@@ -245,10 +257,15 @@ int EspBleAdapter::gatt_access(
     ble_gatt_access_ctxt* context,
     void*) {
     if (instance_ == nullptr || context->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
+        ESP_LOGW(kTag, "BLE GATT access rejected op=%u", context->op);
         return BLE_ATT_ERR_UNLIKELY;
     }
     if (!instance_->connected_.load() || !instance_->secure_.load() ||
         !instance_->bonded_.load()) {
+        ESP_LOGW(kTag, "BLE command rejected connected=%u secure=%u bonded=%u",
+                 instance_->connected_.load(),
+                 instance_->secure_.load(),
+                 instance_->bonded_.load());
         return BLE_ATT_ERR_INSUFFICIENT_AUTHEN;
     }
     const std::size_t size = OS_MBUF_PKTLEN(context->om);
