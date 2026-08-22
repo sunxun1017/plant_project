@@ -207,8 +207,8 @@ void initialize() {
             (void)application.handle_idle_timeout(); // Idle 达到自动休眠阈值后启动 Sleep 行为。
         }
         // Deep Sleep 前，Sleep 行为已经把舵机移动到 BSP 定义的安全休眠位置。
-        // TODO(product): Grow 进入范围后只持久化最后一次经过安全限制的绝对舵机目标命令，
-        // 不保存轨迹、行为历史或原始 PWM；相对命令不能直接重放，避免重启后重复位移。
+        // 机械位置不由历史命令代表；带位置反馈的产品每次启动读取实际位置，
+        // 不持久化或重放最后舵机命令、轨迹及原始 PWM。
         if (lifecycle_state.state == DeviceState::Sleeping &&
             lifecycle_state.power_mode == PowerMode::LightSleep &&
             Config::Power::deep_sleep_enabled && Config::Power::deep_sleep_delay_ms != 0 &&

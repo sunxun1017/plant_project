@@ -348,6 +348,28 @@ Behavior 不控制具体 PWM 和持续时间实现。
 
 ---
 
+## 7.1 V2 Sensing Architecture
+
+V2 增加位置、声学活动、相对光照和温湿度感知。传感器输出先转换为平台无关的语义
+状态，再进入产品策略：
+
+```text
+Position Potentiometer → Position Adapter ───────────┐
+ECM Envelope ─────────→ Acoustic Activity Service ──┤
+GL5528 Divider ────────→ Light Exposure Service ─────┼→ Growth Service
+AHT20 ─────────────────→ Climate Service ────────────┤       │
+Touch ─────────────────→ Touch Service ──────────────┘       ▼
+                                                       Motion / Lighting
+```
+
+四类输入只产生带来源和时间戳的 `GrowthCredit`。Growth Service 统一处理冷却、限幅、
+过期和执行器占用；Sensor Adapter 不直接控制舵机或灯光。
+
+ECM 链路只向上层提供包络音量和讲话活动，不保存、传输或持久化原始音频。GL5528 只
+表示相对明暗，AHT20 通过非阻塞 I²C 状态机读取温湿度。
+
+---
+
 ## 8. Communication Architecture
 
 手机通信属于 Communication Service。
@@ -504,7 +526,7 @@ GPIO
 ```text
 Plant V1 → Servo
 
-Plant V2 → Stepper
+Plant V2 → Servo + Position Potentiometer
 ```
 
 理想情况下：
@@ -547,17 +569,20 @@ ESP32-C3
 + Wi-Fi
 ```
 
-未来：
+V2：
 
 ```text
 Plant V2
 
 ESP32-C3
-+ Stepper
++ Servo + Position Potentiometer
 + RGB LED
 + Vibration Motor
 + BLE
 + Touch Sensor
++ ECM Envelope Sensor
++ GL5528 Light Sensor
++ AHT20 Temperature/Humidity Sensor
 ```
 
 核心业务模块仍然可以复用。
