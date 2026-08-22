@@ -20,6 +20,10 @@ add_library(plant_domain STATIC
     03_services/lifecycle/lifecycle_service.cpp
     03_services/ota/ota_service.cpp
     03_services/power/power_service.cpp
+    03_services/growth/growth_service.cpp
+    03_services/sensing/acoustic_service.cpp
+    03_services/sensing/climate_service.cpp
+    03_services/sensing/illumination_service.cpp
     04_protocol/codec/decoder.cpp
     04_protocol/codec/encoder.cpp
     07_products/plant_v1/app/plant_application.cpp
@@ -36,6 +40,7 @@ if(BUILD_TESTING)
         08_tests/unit/ota_power_service_test.cpp
         08_tests/integration/plant_application_test.cpp
         08_tests/unit/protocol_codec_test.cpp
+        08_tests/unit/sensing_growth_service_test.cpp
     )
     target_link_libraries(plant_domain_tests PRIVATE plant_domain)
     target_compile_options(plant_domain_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)

@@ -1,6 +1,9 @@
 # Generated CMake and ESP-IDF output.
 /build/
+/build-*/
 /compile_commands.json
+__pycache__/
+*.py[cod]
 
 # Local editor indexes.
 /.cache/
