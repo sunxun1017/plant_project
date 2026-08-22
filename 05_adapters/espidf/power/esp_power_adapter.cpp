@@ -7,7 +7,17 @@
 
 namespace plant {
 
-using Config = bsp::v1::BoardConfig;
+using V1Config = bsp::v1::BoardConfig;
+
+EspPowerAdapter::EspPowerAdapter() noexcept
+    : EspPowerAdapter(EspPowerConfig{
+          V1Config::Gpio::touch_input,
+          V1Config::Touch::active_high,
+          V1Config::Power::maximum_cpu_frequency_mhz,
+          V1Config::Power::minimum_cpu_frequency_mhz,
+      }) {}
+
+EspPowerAdapter::EspPowerAdapter(EspPowerConfig config) noexcept : config_(config) {}
 
 Status EspPowerAdapter::initialize() {
     const Status wake_status = configure_touch_wakeup(false);
@@ -16,8 +26,8 @@ Status EspPowerAdapter::initialize() {
     }
 
     esp_pm_config_t configuration{};
-    configuration.max_freq_mhz = Config::Power::maximum_cpu_frequency_mhz;
-    configuration.min_freq_mhz = Config::Power::minimum_cpu_frequency_mhz;
+    configuration.max_freq_mhz = config_.maximum_cpu_frequency_mhz;
+    configuration.min_freq_mhz = config_.minimum_cpu_frequency_mhz;
     configuration.light_sleep_enable = true;
     if (esp_pm_configure(&configuration) != ESP_OK) {
         return Status::failure(ErrorCode::InternalFailure);
@@ -89,9 +99,9 @@ WakeSource EspPowerAdapter::wake_source() const {
 }
 
 Status EspPowerAdapter::configure_touch_wakeup(bool deep_sleep) {
-    const auto pin = static_cast<gpio_num_t>(Config::Gpio::touch_input);
+    const auto pin = static_cast<gpio_num_t>(config_.touch_gpio);
     const gpio_int_type_t interrupt =
-        Config::Touch::active_high ? GPIO_INTR_HIGH_LEVEL : GPIO_INTR_LOW_LEVEL;
+        config_.touch_active_high ? GPIO_INTR_HIGH_LEVEL : GPIO_INTR_LOW_LEVEL;
     if (!deep_sleep) {
         if (gpio_wakeup_enable(pin, interrupt) != ESP_OK ||
             esp_sleep_enable_gpio_wakeup() != ESP_OK) {
@@ -100,10 +110,10 @@ Status EspPowerAdapter::configure_touch_wakeup(bool deep_sleep) {
         return Status::success();
     }
 
-    const auto mode = Config::Touch::active_high ? ESP_GPIO_WAKEUP_GPIO_HIGH
-                                                 : ESP_GPIO_WAKEUP_GPIO_LOW;
+    const auto mode = config_.touch_active_high ? ESP_GPIO_WAKEUP_GPIO_HIGH
+                                                : ESP_GPIO_WAKEUP_GPIO_LOW;
     return esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(
-               1ULL << Config::Gpio::touch_input, mode) == ESP_OK
+               1ULL << config_.touch_gpio, mode) == ESP_OK
                ? Status::success()
                : Status::failure(ErrorCode::InternalFailure);
 }

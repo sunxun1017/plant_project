@@ -1,0 +1,269 @@
+#include <cstddef>
+#include <cstdint>
+
+#include "07_products/plant_v2/app/plant_v2_application.hpp"
+
+namespace plant::test {
+namespace {
+
+int failures = 0;
+
+#define CHECK_V2_APP(condition) \
+    do {                        \
+        if (!(condition)) {     \
+            ++failures;         \
+        }                       \
+    } while (false)
+
+class V2Motion final : public IPositionMotionPort {
+public:
+    Status play(MotionPattern value, std::uint32_t id) override {
+        pattern = value;
+        execution_id = id;
+        snapshot.moving = true;
+        return Status::success();
+    }
+    Status move_to(std::uint16_t target, std::uint32_t id) override {
+        snapshot.target_position = target;
+        snapshot.moving = true;
+        move_target = target;
+        move_execution_id = id;
+        return move_status;
+    }
+    Status stop() override {
+        snapshot.moving = false;
+        return Status::success();
+    }
+    Status poll(std::uint64_t, MotionPollResult& result) override {
+        if (!poll_status.ok()) {
+            return poll_status;
+        }
+        result = poll_result;
+        poll_result = MotionPollResult{};
+        if (result.completed) {
+            snapshot.moving = false;
+        }
+        return Status::success();
+    }
+    PositionSnapshot position_snapshot() const noexcept override { return snapshot; }
+
+    PositionSnapshot snapshot{400, 400, PositionFeedbackState::Valid};
+    MotionPattern pattern{MotionPattern::ReturnNeutral};
+    std::uint32_t execution_id{0};
+    std::uint16_t move_target{0};
+    std::uint32_t move_execution_id{0};
+    MotionPollResult poll_result{};
+    Status poll_status{};
+    Status move_status{};
+};
+
+class V2LightOutput final : public ILightPort {
+public:
+    Status play(LightPattern value, std::uint32_t) override {
+        pattern = value;
+        return Status::success();
+    }
+    Status stop() override { return Status::success(); }
+    Status tick(std::uint64_t) override { return Status::success(); }
+    Status set_intensity(std::uint16_t value) override {
+        intensity = value;
+        return Status::success();
+    }
+
+    LightPattern pattern{LightPattern::FadeOut};
+    std::uint16_t intensity{0};
+};
+
+class V2Haptic final : public IHapticPort {
+public:
+    Status play(HapticPattern, std::uint32_t) override { return Status::success(); }
+    Status stop() override { return Status::success(); }
+    Status tick(std::uint64_t) override { return Status::success(); }
+};
+
+class V2Power final : public IPowerPort {
+public:
+    Status enter_light_sleep() override { return Status::success(); }
+    Status leave_light_sleep() override { return Status::success(); }
+    Status enter_deep_sleep(std::uint64_t) override { return Status::success(); }
+    WakeSource wake_source() const override { return WakeSource::Touch; }
+};
+
+class V2Ota final : public IOtaPort {
+public:
+    Status finalize_boot(bool) override { return Status::success(); }
+    std::size_t available_image_space() const override { return 4096; }
+    Status begin(const OtaImageMetadata&) override { return Status::success(); }
+    Status write(std::size_t, const std::uint8_t*, std::size_t) override {
+        return Status::success();
+    }
+    Status verify_and_activate(const OtaImageMetadata&) override { return Status::success(); }
+    Status abort() override { return Status::success(); }
+};
+
+template <typename Sample>
+struct QueuedSample {
+    Sample sample{};
+    bool available{false};
+    Status status{};
+};
+
+class V2AcousticPort final : public IAcousticSensorPort {
+public:
+    Status initialize() override { return Status::success(); }
+    Status set_enabled(bool value) override {
+        enabled = value;
+        return Status::success();
+    }
+    Status poll(std::uint64_t, AcousticSample& sample, bool& available) override {
+        sample = queued.sample;
+        available = queued.available;
+        queued.available = false;
+        return queued.status;
+    }
+    QueuedSample<AcousticSample> queued{};
+    bool enabled{true};
+};
+
+class V2IlluminationPort final : public IIlluminationSensorPort {
+public:
+    Status initialize() override { return Status::success(); }
+    Status poll(std::uint64_t, IlluminationSample& sample, bool& available) override {
+        sample = queued.sample;
+        available = queued.available;
+        queued.available = false;
+        return queued.status;
+    }
+    QueuedSample<IlluminationSample> queued{};
+};
+
+class V2ClimatePort final : public IClimateSensorPort {
+public:
+    Status initialize() override { return Status::success(); }
+    Status set_enabled(bool value) override {
+        enabled = value;
+        return Status::success();
+    }
+    Status poll(std::uint64_t, ClimateSample& sample, bool& available) override {
+        sample = queued.sample;
+        available = queued.available;
+        queued.available = false;
+        return queued.status;
+    }
+    QueuedSample<ClimateSample> queued{};
+    bool enabled{true};
+};
+
+class V2BatteryPort final : public IBatterySensorPort {
+public:
+    Status initialize() override { return Status::success(); }
+    Status poll(std::uint64_t, BatterySample& sample, bool& available) override {
+        sample = queued.sample;
+        available = queued.available;
+        queued.available = false;
+        return queued.status;
+    }
+    QueuedSample<BatterySample> queued{};
+};
+
+struct V2Fixture {
+    V2Motion motion;
+    V2LightOutput light_output;
+    LightArbitrationService light{light_output};
+    V2Haptic haptic;
+    V2Power power_port;
+    V2Ota ota_port;
+    V2AcousticPort acoustic_port;
+    V2IlluminationPort illumination_port;
+    V2ClimatePort climate_port;
+    V2BatteryPort battery_port;
+    BehaviorService behavior{motion, light, haptic};
+    LifecycleService lifecycle;
+    PowerService power{lifecycle, power_port};
+    OtaService ota{lifecycle, ota_port, {0x504C414E, 2, 0x00020000}};
+    PlantApplication base{behavior, lifecycle, power, ota};
+    AcousticService acoustic;
+    IlluminationService illumination;
+    ClimateService climate;
+    BatteryService battery{200, 80};
+    GrowthService growth{GrowthConfig{50, 900, 15, 30000000, {0, 0, 0, 0, 0}}};
+    PlantV2Application app{
+        base,
+        lifecycle,
+        behavior,
+        ota,
+        motion,
+        acoustic_port,
+        illumination_port,
+        climate_port,
+        battery_port,
+        acoustic,
+        illumination,
+        climate,
+        battery,
+        growth,
+        light,
+    };
+};
+
+void queue_valid_boot_samples(V2Fixture& fixture) {
+    fixture.acoustic_port.queued = {AcousticSample{50, true}, true, Status::success()};
+    fixture.illumination_port.queued = {
+        IlluminationSample{350, true}, true, Status::success()};
+    fixture.climate_port.queued = {
+        ClimateSample{2300, 500, true}, true, Status::success()};
+    fixture.battery_port.queued = {
+        BatterySample{3900, 750, true}, true, Status::success()};
+}
+
+void test_boot_sensor_gate_and_telemetry_snapshots() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(true).ok());
+    CHECK_V2_APP(!fixture.app.boot_sensors_ready());
+    queue_valid_boot_samples(fixture);
+    CHECK_V2_APP(fixture.app.tick(1000).ok());
+    CHECK_V2_APP(fixture.app.boot_sensors_ready());
+    CHECK_V2_APP(fixture.app.boot_sensors_ok());
+    CHECK_V2_APP(fixture.app.climate_snapshot().temperature_centi_c == 2300);
+    CHECK_V2_APP(fixture.app.battery_snapshot().level_per_mille == 750);
+}
+
+void test_touch_credit_uses_measured_position_and_closes_motion_loop() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(true).ok());
+    CHECK_V2_APP(fixture.app.handle_touch(TouchGesture::SingleTap, 1000).ok());
+    const std::uint32_t behavior_id = fixture.behavior.snapshot().execution_id;
+    fixture.motion.poll_result = MotionPollResult{true, behavior_id};
+
+    CHECK_V2_APP(fixture.app.tick(2000).ok());
+    CHECK_V2_APP(fixture.app.growth_motion_active());
+    CHECK_V2_APP(fixture.motion.move_target == 450);
+    CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Interacting);
+
+    fixture.motion.snapshot.actual_position = 450;
+    fixture.motion.snapshot.feedback = PositionFeedbackState::Valid;
+    fixture.motion.snapshot.target_reached = true;
+    fixture.motion.poll_result = MotionPollResult{true, fixture.motion.move_execution_id};
+    CHECK_V2_APP(fixture.app.tick(3000).ok());
+    CHECK_V2_APP(!fixture.app.growth_motion_active());
+    CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Idle);
+}
+
+void test_idle_position_failure_enters_fault() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(true).ok());
+    fixture.motion.poll_status = Status::failure(ErrorCode::MotionFailure);
+    CHECK_V2_APP(fixture.app.tick(1000).code() == ErrorCode::MotionFailure);
+    CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Fault);
+}
+
+}  // namespace
+
+int run_plant_v2_application_tests() {
+    test_boot_sensor_gate_and_telemetry_snapshots();
+    test_touch_credit_uses_measured_position_and_closes_motion_loop();
+    test_idle_position_failure_enters_fault();
+    return failures;
+}
+
+}  // namespace plant::test

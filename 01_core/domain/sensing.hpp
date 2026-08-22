@@ -94,6 +94,27 @@ struct ClimateSnapshot {
     bool valid{false};
 };
 
+enum class BatteryState : std::uint8_t {
+    Unavailable = 0,
+    Normal,
+    Low,
+    Critical,
+    SensorFault,
+};
+
+struct BatterySample {
+    std::uint16_t voltage_mv{0};
+    std::uint16_t level_per_mille{0};
+    bool valid{false};
+};
+
+struct BatterySnapshot {
+    BatteryState state{BatteryState::Unavailable};
+    std::uint16_t voltage_mv{0};
+    std::uint16_t level_per_mille{0};
+    bool valid{false};
+};
+
 enum class GrowthSource : std::uint8_t {
     None = 0,
     Touch,

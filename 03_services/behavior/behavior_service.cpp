@@ -91,9 +91,13 @@ Status BehaviorService::tick(std::uint64_t now_us) {
     }
 
     MotionPollResult motion_result{};
-    const Status motion_status = motion_.poll(now_us, motion_result);
-    if (!motion_status.ok()) {
-        return enter_fault_with(motion_status.code());
+    if (state_ == BehaviorRunState::Running) {
+        // 运动完成事件只由当前行为消费。V2 在行为空闲时可能由 Growth Service
+        // 独占同一运动端口，Behavior Service 不得抢走它的完成事件。
+        const Status motion_status = motion_.poll(now_us, motion_result);
+        if (!motion_status.ok()) {
+            return enter_fault_with(motion_status.code());
+        }
     }
 
     const Status light_status = light_.tick(now_us);

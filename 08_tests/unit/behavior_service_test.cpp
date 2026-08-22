@@ -289,6 +289,7 @@ void test_ota_blocks_behaviors_and_returns_to_boot() {
 namespace plant::test {
 int run_ota_power_service_tests();
 int run_plant_application_tests();
+int run_plant_v2_application_tests();
 int run_protocol_codec_tests();
 int run_sensing_growth_service_tests();
 }
@@ -310,6 +311,7 @@ int main() {
     test_ota_blocks_behaviors_and_returns_to_boot();
     failures += plant::test::run_ota_power_service_tests();
     failures += plant::test::run_plant_application_tests();
+    failures += plant::test::run_plant_v2_application_tests();
     failures += plant::test::run_protocol_codec_tests();
     failures += plant::test::run_sensing_growth_service_tests();
 

@@ -27,6 +27,7 @@ Status CommunicationService::respond(
     Status execution_status,
     const CommunicationState& state) {
     protocol::ResponseMessage response{};
+    response.protocol_version = command.protocol_version;
     response.request_id = command.request_id;
     response.request_type = static_cast<std::uint8_t>(command.type);
     response.status = execution_status.code();
@@ -36,6 +37,16 @@ Status CommunicationService::respond(
     response.ota_state = state.ota_state;
     response.ota_received_bytes = state.ota_received_bytes;
     response.firmware_version = state.firmware_version;
+    response.capabilities = state.capabilities;
+    response.position = state.position;
+    response.acoustic = state.acoustic;
+    response.illumination = state.illumination;
+    response.climate = state.climate;
+    response.battery = state.battery;
+    response.growth = state.growth;
+    response.active_fault = state.active_fault;
+    response.ble_secure = state.ble_secure;
+    response.ble_bonded = state.ble_bonded;
 
     FixedBuffer<protocol::kMaximumFrameSize> frame;
     const Status encode_status = protocol::Encoder::encode_response(response, frame);

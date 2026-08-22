@@ -7,27 +7,41 @@
 namespace plant {
 namespace {
 
-using Config = bsp::v1::BoardConfig;
+using V1Config = bsp::v1::BoardConfig;
 constexpr ledc_mode_t kMode = LEDC_LOW_SPEED_MODE;
 constexpr ledc_timer_t kTimer = LEDC_TIMER_2;
 constexpr ledc_channel_t kChannel = LEDC_CHANNEL_4;
 
 }  // namespace
 
+EspVibrationAdapter::EspVibrationAdapter() noexcept
+    : EspVibrationAdapter(EspVibrationConfig{
+          V1Config::Gpio::vibration_pwm,
+          V1Config::Vibration::frequency_hz,
+          V1Config::Vibration::duty_resolution_bits,
+          V1Config::Vibration::soft_duty,
+          V1Config::Vibration::warning_duty,
+          V1Config::Vibration::maximum_continuous_time_ms,
+          V1Config::Vibration::active_high,
+      }) {}
+
+EspVibrationAdapter::EspVibrationAdapter(EspVibrationConfig config) noexcept
+    : config_(config) {}
+
 Status EspVibrationAdapter::initialize() {
     ledc_timer_config_t timer{};
     timer.speed_mode = kMode;
     timer.duty_resolution =
-        static_cast<ledc_timer_bit_t>(Config::Vibration::duty_resolution_bits);
+        static_cast<ledc_timer_bit_t>(config_.duty_resolution_bits);
     timer.timer_num = kTimer;
-    timer.freq_hz = Config::Vibration::frequency_hz;
+    timer.freq_hz = config_.frequency_hz;
     timer.clk_cfg = LEDC_AUTO_CLK;
     if (ledc_timer_config(&timer) != ESP_OK) {
         return Status::failure(ErrorCode::HapticFailure);
     }
 
     ledc_channel_config_t channel{};
-    channel.gpio_num = Config::Gpio::vibration_pwm;
+    channel.gpio_num = config_.gpio;
     channel.speed_mode = kMode;
     channel.channel = kChannel;
     channel.timer_sel = kTimer;
@@ -59,22 +73,25 @@ Status EspVibrationAdapter::tick(std::uint64_t now_us) {
         case HapticPattern::Off:
             return set_duty(0);
         case HapticPattern::SoftPulse:
-            return set_duty(elapsed < 150000 ? Config::Vibration::soft_duty : 0);
+            return set_duty(elapsed < 150000 ? config_.soft_duty : 0);
         case HapticPattern::DoubleSoftPulse:
             return set_duty(
                 (elapsed < 120000 || (elapsed >= 240000 && elapsed < 360000))
-                    ? Config::Vibration::soft_duty
+                    ? config_.soft_duty
                     : 0);
         case HapticPattern::Warning:
-            return set_duty(elapsed < Config::Vibration::maximum_continuous_time_ms * 1000ULL
-                                ? Config::Vibration::warning_duty
+            return set_duty(elapsed < config_.maximum_continuous_time_ms * 1000ULL
+                                ? config_.warning_duty
                                 : 0);
     }
     return Status::failure(ErrorCode::HapticFailure);
 }
 
 Status EspVibrationAdapter::set_duty(std::uint8_t duty) {
-    const std::uint32_t output = Config::Vibration::active_high ? duty : 255 - duty;
+    const std::uint32_t maximum_hardware_duty =
+        (1U << config_.duty_resolution_bits) - 1U;
+    const std::uint32_t output =
+        config_.active_high ? duty : maximum_hardware_duty - duty;
     if (ledc_set_duty(kMode, kChannel, output) != ESP_OK ||
         ledc_update_duty(kMode, kChannel) != ESP_OK) {
         return Status::failure(ErrorCode::HapticFailure);

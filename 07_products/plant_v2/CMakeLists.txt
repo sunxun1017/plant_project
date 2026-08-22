@@ -1,0 +1,52 @@
+idf_component_register(
+    SRCS
+        "main.cpp"
+        "composition_root.cpp"
+        "app/plant_v2_application.cpp"
+        "../plant_v1/app/plant_application.cpp"
+        "../../03_services/behavior/behavior_policy.cpp"
+        "../../03_services/behavior/behavior_service.cpp"
+        "../../03_services/communication/communication_service.cpp"
+        "../../03_services/growth/growth_service.cpp"
+        "../../03_services/lifecycle/lifecycle_service.cpp"
+        "../../03_services/lighting/light_arbitration_service.cpp"
+        "../../03_services/ota/ota_service.cpp"
+        "../../03_services/power/power_service.cpp"
+        "../../03_services/sensing/acoustic_service.cpp"
+        "../../03_services/sensing/battery_service.cpp"
+        "../../03_services/sensing/climate_service.cpp"
+        "../../03_services/sensing/illumination_service.cpp"
+        "../../04_protocol/codec/decoder.cpp"
+        "../../04_protocol/codec/encoder.cpp"
+        "../../05_adapters/espidf/ble/esp_ble_adapter.cpp"
+        "../../05_adapters/espidf/haptic/vibration_adapter.cpp"
+        "../../05_adapters/espidf/light/led_adapter.cpp"
+        "../../05_adapters/espidf/motion/feedback_servo_adapter.cpp"
+        "../../05_adapters/espidf/ota/esp_ota_adapter.cpp"
+        "../../05_adapters/espidf/power/esp_power_adapter.cpp"
+        "../../05_adapters/espidf/sensing/aht21_adapter.cpp"
+        "../../05_adapters/espidf/sensing/max17048_adapter.cpp"
+        "../../05_adapters/espidf/sensing/v2_acoustic_adapter.cpp"
+        "../../05_adapters/espidf/sensing/v2_adc_sampler.cpp"
+        "../../05_adapters/espidf/sensing/v2_i2c_bus.cpp"
+        "../../05_adapters/espidf/sensing/v2_illumination_adapter.cpp"
+        "../../05_adapters/espidf/touch/touch_adapter.cpp"
+    INCLUDE_DIRS
+        "../.."
+    REQUIRES
+        app_update
+        bt
+        esp_adc
+        esp_driver_gpio
+        esp_driver_i2c
+        esp_driver_ledc
+        esp_hw_support
+        esp_pm
+        esp_timer
+        freertos
+        log
+        nvs_flash
+)
+
+target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra -Werror)

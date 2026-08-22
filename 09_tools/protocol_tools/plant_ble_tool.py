@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plant V1 BLE protocol smoke-test and OTA utility.
+"""Plant V1/V2 BLE protocol smoke-test, telemetry, and OTA utility.
 
 The codec uses only the Python standard library. Hardware commands additionally
 require ``bleak`` (``python3 -m pip install bleak``).
@@ -16,11 +16,12 @@ import struct
 from typing import Any
 
 
-DEVICE_NAME = "Plant-V1-C3"
+DEVICE_NAME = "Plant-V2-C3"
 COMMAND_UUID = "0000fff1-0000-1000-8000-00805f9b34fb"
 RESPONSE_UUID = "0000fff2-0000-1000-8000-00805f9b34fb"
 MAGIC = 0xA5
 VERSION = 1
+VERSION_V2 = 2
 RESPONSE_TYPE = 0x80
 MAX_OTA_CHUNK = 496
 
@@ -33,6 +34,7 @@ COMMANDS = {
     "ota-chunk": 0x11,
     "finish-ota": 0x12,
     "cancel-ota": 0x13,
+    "forget-bonds": 0x20,
 }
 BEHAVIORS = {"wake-up": 0, "happy": 1, "attention": 2, "calm": 3, "sleep": 4, "error": 5}
 ERROR_NAMES = (
@@ -49,15 +51,24 @@ ERROR_NAMES = (
     "ProtocolFailure",
     "OtaFailure",
     "InternalFailure",
+    "SensorFailure",
 )
 DEVICE_STATES = ("Booting", "Idle", "Interacting", "Sleeping", "Fault", "Updating")
 POWER_MODES = ("Active", "LightSleep", "DeepSleep")
-BEHAVIOR_NAMES = ("WakeUp", "Happy", "Attention", "Calm", "Sleep", "Error")
+BEHAVIOR_NAMES = ("WakeUp", "Happy", "Attention", "Calm", "Sleep", "Error", "Grow")
 OTA_STATES = ("Idle", "Receiving", "Verifying", "ReadyToReboot", "Failed")
+POSITION_FEEDBACK_STATES = ("Unavailable", "Valid", "OpenCircuit", "ShortCircuit", "OutOfRange")
+MOTION_FAULTS = ("None", "FeedbackInvalid", "Stalled", "OppositeDirection", "Timeout")
+ACOUSTIC_STATES = ("Quiet", "Speaking", "SustainedSpeech", "SensorFault")
+ILLUMINATION_STATES = ("Dark", "Ambient", "BrightExposure", "SensorFault")
+CLIMATE_STATES = ("TooCold", "TooHot", "TooDry", "TooHumid", "Suitable", "SensorFault")
+BATTERY_STATES = ("Unavailable", "Normal", "Low", "Critical", "SensorFault")
+GROWTH_SOURCES = ("None", "Touch", "SustainedSpeech", "BrightExposure", "SuitableClimate")
 
 
 @dataclass(frozen=True)
 class Response:
+    protocol_version: int
     request_id: int
     request_type: int
     error: int
@@ -67,6 +78,31 @@ class Response:
     ota_state: int
     ota_received_bytes: int
     firmware_version: int
+    capabilities: int = 0
+    actual_position: int = 0
+    target_position: int = 0
+    position_feedback: int = 0
+    motion_fault: int = 0
+    motion_flags: int = 0
+    acoustic_state: int = 0
+    volume_level: int = 0
+    noise_floor: int = 0
+    speaking_duration_s: int = 0
+    illumination_state: int = 1
+    relative_light: int = 0
+    bright_duration_s: int = 0
+    climate_state: int = 5
+    temperature_centi_c: int = 0
+    humidity_tenths_percent: int = 0
+    suitable_duration_s: int = 0
+    battery_state: int = 0
+    battery_level_per_mille: int = 0
+    battery_voltage_mv: int = 0
+    recent_growth_source: int = 0
+    pending_growth_source: int = 0
+    growth_flags: int = 0
+    ble_flags: int = 0
+    active_fault: int = 0
 
     @property
     def ok(self) -> bool:
@@ -77,14 +113,21 @@ def crc32(data: bytes) -> int:
     return binascii.crc32(data) & 0xFFFFFFFF
 
 
-def encode_request(command_type: int, request_id: int, payload: bytes = b"") -> bytes:
+def encode_request(
+    command_type: int,
+    request_id: int,
+    payload: bytes = b"",
+    version: int = VERSION,
+) -> bytes:
     if not 0 <= command_type <= 0xFF:
         raise ValueError("command type must fit in one byte")
     if not 0 <= request_id <= 0xFFFF:
         raise ValueError("request id must fit in two bytes")
     if len(payload) > 500:
         raise ValueError("payload exceeds the 500-byte protocol limit")
-    header = struct.pack("<BBBBHH", MAGIC, VERSION, command_type, 0, request_id, len(payload))
+    if version not in (VERSION, VERSION_V2):
+        raise ValueError("protocol version must be 1 or 2")
+    header = struct.pack("<BBBBHH", MAGIC, version, command_type, 0, request_id, len(payload))
     body = header + payload
     return body + struct.pack("<I", crc32(body))
 
@@ -95,15 +138,28 @@ def decode_response(frame: bytes) -> Response:
     magic, version, frame_type, flags, request_id, payload_size = struct.unpack_from(
         "<BBBBHH", frame
     )
-    if magic != MAGIC or version != VERSION or frame_type != RESPONSE_TYPE or flags != 0:
+    if magic != MAGIC or version not in (VERSION, VERSION_V2) or frame_type != RESPONSE_TYPE or flags != 0:
         raise ValueError("response header is invalid")
-    if payload_size != 14 or len(frame) != 8 + payload_size + 4:
+    expected_payload_size = 54 if version == VERSION_V2 else 14
+    if payload_size != expected_payload_size or len(frame) != 8 + payload_size + 4:
         raise ValueError("response length is invalid")
     expected_crc = struct.unpack_from("<I", frame, 8 + payload_size)[0]
     if crc32(frame[: 8 + payload_size]) != expected_crc:
         raise ValueError("response CRC32 mismatch")
     fields = struct.unpack_from("<BBBBBBII", frame, 8)
-    return Response(request_id, *fields)
+    response = Response(version, request_id, *fields)
+    if version == VERSION:
+        return response
+
+    response_fields = struct.unpack_from(
+        "<IHHBBBBHHHBHHBhHHBHHBBBBB", frame, 22
+    )
+    return Response(
+        version,
+        request_id,
+        *fields,
+        *response_fields,
+    )
 
 
 def enum_name(names: tuple[str, ...], value: int) -> str:
@@ -111,7 +167,7 @@ def enum_name(names: tuple[str, ...], value: int) -> str:
 
 
 def describe(response: Response) -> str:
-    return (
+    summary = (
         f"request={response.request_id} type=0x{response.request_type:02x} "
         f"status={enum_name(ERROR_NAMES, response.error)} "
         f"device={enum_name(DEVICE_STATES, response.device_state)} "
@@ -121,14 +177,36 @@ def describe(response: Response) -> str:
         f"received={response.ota_received_bytes} "
         f"firmware=0x{response.firmware_version:08x}"
     )
+    if response.protocol_version == VERSION:
+        return summary
+    return (
+        summary
+        + f" height={response.actual_position}/1000 target={response.target_position}/1000"
+        + f" position={enum_name(POSITION_FEEDBACK_STATES, response.position_feedback)}"
+        + f" motion_fault={enum_name(MOTION_FAULTS, response.motion_fault)}"
+        + f" acoustic={enum_name(ACOUSTIC_STATES, response.acoustic_state)}"
+        + f" volume={response.volume_level}/1000"
+        + f" light={enum_name(ILLUMINATION_STATES, response.illumination_state)}"
+        + f" light_level={response.relative_light}/1000"
+        + f" climate={enum_name(CLIMATE_STATES, response.climate_state)}"
+        + f" temperature={response.temperature_centi_c / 100:.2f}C"
+        + f" humidity={response.humidity_tenths_percent / 10:.1f}%RH"
+        + f" battery={enum_name(BATTERY_STATES, response.battery_state)}"
+        + f" battery_level={response.battery_level_per_mille / 10:.1f}%"
+        + f" battery_voltage={response.battery_voltage_mv}mV"
+        + f" growth={enum_name(GROWTH_SOURCES, response.recent_growth_source)}"
+        + f" secure={bool(response.ble_flags & 1)} bonded={bool(response.ble_flags & 2)}"
+        + f" active_fault={enum_name(ERROR_NAMES, response.active_fault)}"
+    )
 
 
 class BleSession:
-    def __init__(self, client: Any, timeout: float) -> None:
+    def __init__(self, client: Any, timeout: float, protocol_version: int) -> None:
         self.client = client
         self.timeout = timeout
         self.next_request_id = 1
         self.notifications: asyncio.Queue[bytes] = asyncio.Queue()
+        self.protocol_version = protocol_version
 
     def on_notification(self, _sender: Any, data: bytearray) -> None:
         self.notifications.put_nowait(bytes(data))
@@ -137,7 +215,9 @@ class BleSession:
         request_id = self.next_request_id
         self.next_request_id = 1 if request_id == 0xFFFF else request_id + 1
         await self.client.write_gatt_char(
-            COMMAND_UUID, encode_request(command_type, request_id, payload), response=True
+            COMMAND_UUID,
+            encode_request(command_type, request_id, payload, self.protocol_version),
+            response=True,
         )
         while True:
             frame = await asyncio.wait_for(self.notifications.get(), timeout=self.timeout)
@@ -215,9 +295,9 @@ async def run_hardware_command(args: argparse.Namespace) -> None:
             raise TimeoutError(f"BLE device {args.name!r} was not found")
 
     async with BleakClient(target, timeout=args.timeout) as client:
-        session = BleSession(client, args.timeout)
+        session = BleSession(client, args.timeout, args.protocol_version)
         await client.start_notify(RESPONSE_UUID, session.on_notification)
-        if args.command in ("ping", "state", "stop", "cancel-ota"):
+        if args.command in ("ping", "state", "stop", "cancel-ota", "forget-bonds"):
             await require_success(session, args.command)
         elif args.command == "behavior":
             await require_success(session, "behavior", bytes((BEHAVIORS[args.behavior],)))
@@ -235,8 +315,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--name", default=DEVICE_NAME, help="device name used while scanning")
     parser.add_argument("--timeout", type=float, default=5.0, help="response timeout in seconds")
     parser.add_argument("--scan-timeout", type=float, default=10.0)
+    parser.add_argument(
+        "--protocol-version", type=int, choices=(VERSION, VERSION_V2), default=VERSION_V2
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for name in ("ping", "state", "stop", "cancel-ota"):
+    for name in ("ping", "state", "stop", "cancel-ota", "forget-bonds"):
         subparsers.add_parser(name)
 
     behavior = subparsers.add_parser("behavior")
@@ -246,7 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
     ota.add_argument("image", type=Path)
     ota.add_argument("--version", type=integer, required=True)
     ota.add_argument("--product-id", type=integer, default=0x504C414E)
-    ota.add_argument("--hardware-revision", type=integer, default=1)
+    ota.add_argument("--hardware-revision", type=integer, default=2)
     return parser
 
 

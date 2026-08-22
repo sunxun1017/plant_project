@@ -42,7 +42,8 @@ Status Decoder::decode(
         frame_size > kMaximumFrameSize) {
         return Status::failure(ErrorCode::ProtocolFailure);
     }
-    if (frame[0] != kMagic || frame[1] != kVersion || frame[3] != 0) {
+    if (frame[0] != kMagic ||
+        (frame[1] != kVersion1 && frame[1] != kVersion2) || frame[3] != 0) {
         return Status::failure(ErrorCode::ProtocolFailure);
     }
 
@@ -57,6 +58,7 @@ Status Decoder::decode(
     }
 
     command = Command{};
+    command.protocol_version = frame[1];
     command.request_id = read_u16(frame + 4);
     command.type = static_cast<CommandType>(frame[2]);
     const std::uint8_t* payload = frame + kHeaderSize;
@@ -67,9 +69,12 @@ Status Decoder::decode(
         case CommandType::StopBehavior:
         case CommandType::FinishOta:
         case CommandType::CancelOta:
+        case CommandType::ForgetBonds:
             return no_payload(payload_size) ? Status::success()
                                             : Status::failure(ErrorCode::InvalidArgument);
         case CommandType::SetBehavior:
+            // V1 线上协议只允许 V1 行为；V2 Grow 由 GrowthCredit 策略触发，
+            // 不让旧客户端用一个枚举值绕过位置与冷却策略。
             if (payload_size != 1 || payload[0] > static_cast<std::uint8_t>(Behavior::Error)) {
                 return Status::failure(ErrorCode::InvalidArgument);
             }

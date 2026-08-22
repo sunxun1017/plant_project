@@ -7,7 +7,7 @@
 
 namespace plant {
 
-// Adapter 在内部以非阻塞状态机触发和读取 AHT20；poll() 不得等待一次完整测量。
+// Adapter 在内部以非阻塞状态机触发和读取 AHT21；poll() 不得等待一次完整测量。
 class IClimateSensorPort {
 public:
     virtual ~IClimateSensorPort() = default;

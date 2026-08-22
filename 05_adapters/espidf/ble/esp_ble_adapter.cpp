@@ -7,6 +7,8 @@
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
 #include "host/ble_hs.h"
+#include "host/ble_sm.h"
+#include "host/ble_store.h"
 #include "host/ble_uuid.h"
 #include "host/util/util.h"
 #include "nimble/nimble_port.h"
@@ -19,26 +21,44 @@
 namespace plant {
 namespace {
 
-using Config = bsp::v1::BoardConfig;
+using V1Config = bsp::v1::BoardConfig;
 constexpr char kTag[] = "plant_ble";
-ble_uuid16_t service_uuid = BLE_UUID16_INIT(Config::Ble::service_uuid);
-ble_uuid16_t command_uuid = BLE_UUID16_INIT(Config::Ble::command_uuid);
-ble_uuid16_t response_uuid = BLE_UUID16_INIT(Config::Ble::response_uuid);
+ble_uuid16_t service_uuid = BLE_UUID16_INIT(0);
+ble_uuid16_t command_uuid = BLE_UUID16_INIT(0);
+ble_uuid16_t response_uuid = BLE_UUID16_INIT(0);
 
 ble_gatt_chr_def characteristics[3]{};
 ble_gatt_svc_def services[2]{};
 
 }  // namespace
 
+extern "C" void ble_store_config_init(void);
+
 EspBleAdapter* EspBleAdapter::instance_ = nullptr;
 std::uint16_t EspBleAdapter::response_value_handle_ = 0;
 
+EspBleAdapter::EspBleAdapter() noexcept
+    : EspBleAdapter(EspBleConfig{
+          V1Config::Product::device_name,
+          V1Config::Ble::service_uuid,
+          V1Config::Ble::command_uuid,
+          V1Config::Ble::response_uuid,
+          V1Config::Ble::preferred_mtu,
+          V1Config::Ble::receive_queue_depth,
+          V1Config::Ble::advertising_interval_min_units,
+          V1Config::Ble::advertising_interval_max_units,
+      }) {}
+
+EspBleAdapter::EspBleAdapter(EspBleConfig config) noexcept : config_(config) {}
+
 Status EspBleAdapter::initialize() {
-    if (instance_ != nullptr) {
+    if (instance_ != nullptr || config_.device_name == nullptr ||
+        config_.receive_queue_depth == 0 ||
+        config_.receive_queue_depth > kMaximumReceiveQueueDepth) {
         return Status::failure(ErrorCode::InvalidState);
     }
     queue_ = xQueueCreateStatic(
-        Config::Ble::receive_queue_depth,
+        config_.receive_queue_depth,
         sizeof(RxItem),
         queue_storage_.data(),
         &queue_control_);
@@ -47,27 +67,41 @@ Status EspBleAdapter::initialize() {
     }
     instance_ = this;
 
-    esp_err_t nvs_status = nvs_flash_init();
-    if (nvs_status == ESP_ERR_NVS_NO_FREE_PAGES ||
-        nvs_status == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        nvs_status = nvs_flash_erase();
-        if (nvs_status == ESP_OK) {
-            nvs_status = nvs_flash_init();
-        }
+    // 绑定密钥位于 NVS。初始化异常时进入故障，绝不为“自动恢复”整分区擦除密钥；
+    // 用户仍可通过明确的重新烧录/NVS 恢复流程处理损坏分区。
+    const esp_err_t nvs_status = nvs_flash_init();
+    if (nvs_status != ESP_OK) {
+        instance_ = nullptr;
+        return Status::failure(ErrorCode::StorageFailure);
     }
-    if (nvs_status != ESP_OK || nimble_port_init() != ESP_OK) {
+    if (nimble_port_init() != ESP_OK) {
         instance_ = nullptr;
         return Status::failure(ErrorCode::InternalFailure);
     }
 
     ble_hs_cfg.reset_cb = on_reset;
     ble_hs_cfg.sync_cb = on_sync;
+    ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_NO_IO;
+    ble_hs_cfg.sm_bonding = 1;
+    ble_hs_cfg.sm_mitm = 0;
+    ble_hs_cfg.sm_sc = 1;
+    ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_store_config_init();
+    // 不能使用 NimBLE 示例的 round-robin 策略；它会在绑定表满时静默删除最旧设备。
+    ble_hs_cfg.store_status_cb = store_status;
+    ble_hs_cfg.store_status_arg = this;
     ble_svc_gap_init();
     ble_svc_gatt_init();
 
+    service_uuid.value = config_.service_uuid;
+    command_uuid.value = config_.command_uuid;
+    response_uuid.value = config_.response_uuid;
+
     characteristics[0].uuid = &command_uuid.u;
     characteristics[0].access_cb = gatt_access;
-    characteristics[0].flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP;
+    characteristics[0].flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP |
+                               BLE_GATT_CHR_F_WRITE_ENC;
     characteristics[1].uuid = &response_uuid.u;
     characteristics[1].val_handle = &response_value_handle_;
     characteristics[1].flags = BLE_GATT_CHR_F_NOTIFY;
@@ -76,8 +110,8 @@ Status EspBleAdapter::initialize() {
     services[0].characteristics = characteristics;
 
     if (ble_gatts_count_cfg(services) != 0 || ble_gatts_add_svcs(services) != 0 ||
-        ble_svc_gap_device_name_set(Config::Product::device_name) != 0 ||
-        ble_att_set_preferred_mtu(Config::Ble::preferred_mtu) != 0) {
+        ble_svc_gap_device_name_set(config_.device_name) != 0 ||
+        ble_att_set_preferred_mtu(config_.preferred_mtu) != 0) {
         instance_ = nullptr;
         return Status::failure(ErrorCode::InternalFailure);
     }
@@ -99,7 +133,7 @@ Status EspBleAdapter::send(const std::uint8_t* data, std::size_t size) {
     if (data == nullptr || size == 0 || size > kMaximumBleFrameSize) {
         return Status::failure(ErrorCode::InvalidArgument);
     }
-    if (!connected_.load()) {
+    if (!connected_.load() || !secure_.load() || !bonded_.load()) {
         return Status::failure(ErrorCode::InvalidState);
     }
     os_mbuf* packet = ble_hs_mbuf_from_flat(data, size);
@@ -115,6 +149,21 @@ bool EspBleAdapter::connected() const {
     return connected_.load();
 }
 
+bool EspBleAdapter::secure() const {
+    return secure_.load();
+}
+
+bool EspBleAdapter::bonded() const {
+    return bonded_.load();
+}
+
+Status EspBleAdapter::forget_bonds() {
+    // 该入口只由加密 GATT 命令调用。清除 NVS 中的 LTK、IRK 和 CCCD；composition
+    // root 会先发送响应再重启，使下一次连接必须重新配对。
+    return ble_store_clear() == 0 ? Status::success()
+                                  : Status::failure(ErrorCode::StorageFailure);
+}
+
 int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
     auto* self = static_cast<EspBleAdapter*>(argument);
     switch (event->type) {
@@ -122,18 +171,41 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
             if (event->connect.status == 0) {
                 self->connection_handle_.store(event->connect.conn_handle);
                 self->connected_.store(true);
+                self->secure_.store(false);
+                self->bonded_.store(false);
+                if (ble_gap_security_initiate(event->connect.conn_handle) != 0) {
+                    (void)ble_gap_terminate(
+                        event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+                }
             } else {
                 (void)self->start_advertising();
             }
             return 0;
         case BLE_GAP_EVENT_DISCONNECT:
             self->connected_.store(false);
+            self->secure_.store(false);
+            self->bonded_.store(false);
             self->connection_handle_.store(BLE_HS_CONN_HANDLE_NONE);
             (void)self->start_advertising();
             return 0;
         case BLE_GAP_EVENT_ADV_COMPLETE:
             (void)self->start_advertising();
             return 0;
+        case BLE_GAP_EVENT_ENC_CHANGE: {
+            ble_gap_conn_desc descriptor{};
+            if (event->enc_change.status == 0 &&
+                ble_gap_conn_find(event->enc_change.conn_handle, &descriptor) == 0) {
+                self->secure_.store(descriptor.sec_state.encrypted != 0);
+                self->bonded_.store(descriptor.sec_state.bonded != 0);
+            } else {
+                self->secure_.store(false);
+                self->bonded_.store(false);
+            }
+            return 0;
+        }
+        case BLE_GAP_EVENT_REPEAT_PAIRING:
+            // 不自动删除已持久化的绑定；解绑必须走显式的本机恢复流程。
+            return BLE_GAP_REPEAT_PAIRING_IGNORE;
         default:
             return 0;
     }
@@ -147,6 +219,10 @@ int EspBleAdapter::gatt_access(
     if (instance_ == nullptr || context->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
         return BLE_ATT_ERR_UNLIKELY;
     }
+    if (!instance_->connected_.load() || !instance_->secure_.load() ||
+        !instance_->bonded_.load()) {
+        return BLE_ATT_ERR_INSUFFICIENT_AUTHEN;
+    }
     const std::size_t size = OS_MBUF_PKTLEN(context->om);
     if (size == 0 || size > kMaximumBleFrameSize) {
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
@@ -156,6 +232,14 @@ int EspBleAdapter::gatt_access(
         return BLE_ATT_ERR_UNLIKELY;
     }
     return instance_->enqueue(data.data(), size) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+int EspBleAdapter::store_status(ble_store_status_event* event, void*) {
+    if (event != nullptr) {
+        ESP_LOGW(kTag, "BLE persistent store full/event=%d; preserving existing bonds",
+                 event->event_code);
+    }
+    return BLE_HS_ENOMEM;
 }
 
 void EspBleAdapter::on_sync() {
@@ -173,6 +257,8 @@ void EspBleAdapter::on_reset(int reason) {
     ESP_LOGE(kTag, "NimBLE reset reason=%d", reason);
     if (instance_ != nullptr) {
         instance_->connected_.store(false);
+        instance_->secure_.store(false);
+        instance_->bonded_.store(false);
     }
 }
 
@@ -190,8 +276,8 @@ Status EspBleAdapter::start_advertising() {
     ble_hs_adv_fields fields{};
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
     fields.name = reinterpret_cast<std::uint8_t*>(
-        const_cast<char*>(Config::Product::device_name));
-    fields.name_len = std::strlen(Config::Product::device_name);
+        const_cast<char*>(config_.device_name));
+    fields.name_len = std::strlen(config_.device_name);
     fields.name_is_complete = 1;
     fields.uuids16 = &service_uuid;
     fields.num_uuids16 = 1;
@@ -203,8 +289,8 @@ Status EspBleAdapter::start_advertising() {
     ble_gap_adv_params parameters{};
     parameters.conn_mode = BLE_GAP_CONN_MODE_UND;
     parameters.disc_mode = BLE_GAP_DISC_MODE_GEN;
-    parameters.itvl_min = Config::Ble::advertising_interval_min_units;
-    parameters.itvl_max = Config::Ble::advertising_interval_max_units;
+    parameters.itvl_min = config_.advertising_interval_min_units;
+    parameters.itvl_max = config_.advertising_interval_max_units;
     return ble_gap_adv_start(
                address_type,
                nullptr,

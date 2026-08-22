@@ -62,12 +62,13 @@ FixedBuffer<kMaximumFrameSize> make_request(
     CommandType type,
     std::uint16_t request_id,
     const std::uint8_t* payload,
-    std::size_t payload_size) {
+    std::size_t payload_size,
+    std::uint8_t version = kVersion) {
     FixedBuffer<kMaximumFrameSize> frame;
     (void)frame.resize(kHeaderSize + payload_size + kCrcSize);
     auto* output = frame.data();
     output[0] = kMagic;
-    output[1] = kVersion;
+    output[1] = version;
     output[2] = static_cast<std::uint8_t>(type);
     output[3] = 0;
     write_u16(output + 4, request_id);
@@ -127,6 +128,23 @@ void test_crc_and_payload_validation() {
                    ErrorCode::InvalidArgument);
 }
 
+void test_forget_bonds_requires_empty_payload() {
+    Command command{};
+    auto frame = make_request(CommandType::ForgetBonds, 9, nullptr, 0, protocol::kVersion2);
+    CHECK_PROTOCOL(protocol::Decoder::decode(frame.data(), frame.size(), command).ok());
+    CHECK_PROTOCOL(command.type == CommandType::ForgetBonds);
+
+    const std::uint8_t unexpected_payload[]{1};
+    frame = make_request(
+        CommandType::ForgetBonds,
+        10,
+        unexpected_payload,
+        sizeof(unexpected_payload),
+        protocol::kVersion2);
+    CHECK_PROTOCOL(protocol::Decoder::decode(frame.data(), frame.size(), command).code() ==
+                   ErrorCode::InvalidArgument);
+}
+
 void test_response_encoding() {
     protocol::ResponseMessage response{};
     response.request_id = 99;
@@ -150,6 +168,44 @@ void test_response_encoding() {
         (static_cast<std::uint32_t>(frame[kHeaderSize + payload_size + 2]) << 16U) |
         (static_cast<std::uint32_t>(frame[kHeaderSize + payload_size + 3]) << 24U);
     CHECK_PROTOCOL(encoded_crc == protocol::crc32(frame.data(), kHeaderSize + payload_size));
+}
+
+void test_v2_request_and_extended_response() {
+    auto request = make_request(CommandType::GetState, 200, nullptr, 0, protocol::kVersion2);
+    Command command{};
+    CHECK_PROTOCOL(protocol::Decoder::decode(
+                       request.data(), request.size(), command)
+                       .ok());
+    CHECK_PROTOCOL(command.protocol_version == protocol::kVersion2);
+
+    protocol::ResponseMessage response{};
+    response.protocol_version = protocol::kVersion2;
+    response.request_id = 200;
+    response.request_type = static_cast<std::uint8_t>(CommandType::GetState);
+    response.capabilities = protocol::PositionFeedbackCapability |
+                            protocol::ClimateCapability |
+                            protocol::PersistentBondingCapability;
+    response.position = PositionSnapshot{
+        420, 475, PositionFeedbackState::Valid, MotionFault::None, true, false};
+    response.acoustic.state = AcousticState::Speaking;
+    response.acoustic.volume_level = 640;
+    response.illumination.state = IlluminationState::BrightExposure;
+    response.illumination.relative_level = 810;
+    response.climate = ClimateSnapshot{
+        ClimateState::Suitable, 2350, 566, 12000, true};
+    response.battery = BatterySnapshot{BatteryState::Normal, 3920, 730, true};
+    response.growth.recent_source = GrowthSource::Touch;
+    response.ble_secure = true;
+    response.ble_bonded = true;
+    FixedBuffer<kMaximumFrameSize> frame;
+    CHECK_PROTOCOL(protocol::Encoder::encode_response(response, frame).ok());
+    CHECK_PROTOCOL(frame[1] == protocol::kVersion2);
+    CHECK_PROTOCOL(frame[6] == 54);
+    CHECK_PROTOCOL(frame.size() == protocol::kHeaderSize + 54 + protocol::kCrcSize);
+    CHECK_PROTOCOL(frame[26] == 0xA4 && frame[27] == 0x01);  // actual_position=420
+    CHECK_PROTOCOL(frame[40] == static_cast<std::uint8_t>(
+                                      IlluminationState::BrightExposure));
+    CHECK_PROTOCOL(frame[60] == 0x03);  // encrypted + bonded
 }
 
 void test_communication_service_round_trip() {
@@ -204,7 +260,9 @@ int run_protocol_codec_tests() {
     test_set_behavior_decoding();
     test_ota_begin_and_chunk_decoding();
     test_crc_and_payload_validation();
+    test_forget_bonds_requires_empty_payload();
     test_response_encoding();
+    test_v2_request_and_extended_response();
     test_communication_service_round_trip();
     test_communication_service_preserves_header_for_parameter_errors();
     return failures;

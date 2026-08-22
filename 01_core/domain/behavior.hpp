@@ -11,6 +11,7 @@ enum class Behavior : std::uint8_t {
     Calm,
     Sleep,
     Error,
+    Grow,
 };
 
 enum class MotionPattern : std::uint8_t {
@@ -29,6 +30,12 @@ enum class LightPattern : std::uint8_t {
     SlowBreathing,
     FadeOut,
     ErrorBlink,
+    TouchPulse,
+    ListeningBreath,
+    SunGlow,
+    ComfortGlow,
+    GrowthRise,
+    GrowthLimit,
 };
 
 enum class HapticPattern : std::uint8_t {

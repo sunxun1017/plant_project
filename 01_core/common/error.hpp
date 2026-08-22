@@ -18,6 +18,7 @@ enum class ErrorCode : std::uint8_t {
     ProtocolFailure,
     OtaFailure,
     InternalFailure,
+    SensorFailure,
 };
 
 }  // namespace plant

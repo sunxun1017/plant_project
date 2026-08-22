@@ -124,6 +124,9 @@ Status PlantApplication::handle_command(const Command& command) {
             return finish_ota();
         case CommandType::CancelOta:
             return cancel_ota();
+        case CommandType::ForgetBonds:
+            // 绑定密钥属于平台 BLE Adapter；V2 composition root 在加密链路上显式处理。
+            return Status::failure(ErrorCode::Unsupported);
     }
     return Status::failure(ErrorCode::Unsupported);
 }

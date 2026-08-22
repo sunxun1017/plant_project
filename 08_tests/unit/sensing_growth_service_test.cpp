@@ -1,7 +1,9 @@
 #include <cstdint>
 
 #include "03_services/growth/growth_service.hpp"
+#include "03_services/lighting/light_arbitration_service.hpp"
 #include "03_services/sensing/acoustic_service.hpp"
+#include "03_services/sensing/battery_service.hpp"
 #include "03_services/sensing/climate_service.hpp"
 #include "03_services/sensing/illumination_service.hpp"
 
@@ -9,6 +11,29 @@ namespace plant::test {
 namespace {
 
 int failures = 0;
+
+class FakeLightOutput final : public ILightPort {
+public:
+    Status play(LightPattern pattern, std::uint32_t) override {
+        last_pattern = pattern;
+        ++play_count;
+        return Status::success();
+    }
+    Status stop() override {
+        ++stop_count;
+        return Status::success();
+    }
+    Status tick(std::uint64_t) override { return Status::success(); }
+    Status set_intensity(std::uint16_t value) override {
+        intensity = value;
+        return Status::success();
+    }
+
+    LightPattern last_pattern{LightPattern::FadeOut};
+    std::uint16_t intensity{0};
+    int play_count{0};
+    int stop_count{0};
+};
 
 #define CHECK_SENSING(condition) \
     do {                         \
@@ -174,6 +199,57 @@ void test_growth_limit_expiry_cooldown_and_invalid_feedback() {
                        .code() == ErrorCode::MotionFailure);
 }
 
+void test_battery_levels_and_sensor_fault() {
+    BatteryService service{200, 80};
+    service.process(BatterySample{3900, 750, true});
+    CHECK_SENSING(service.snapshot().state == BatteryState::Normal);
+    service.process(BatterySample{3600, 200, true});
+    CHECK_SENSING(service.snapshot().state == BatteryState::Low);
+    service.process(BatterySample{3400, 80, true});
+    CHECK_SENSING(service.snapshot().state == BatteryState::Critical);
+    service.process(BatterySample{0, 0, false});
+    CHECK_SENSING(service.snapshot().state == BatteryState::SensorFault);
+}
+
+void test_light_priority_and_expiry_restore_background() {
+    FakeLightOutput output;
+    LightArbitrationService service{output};
+    CHECK_SENSING(service.request(
+                       LightRequestSource::Sunlight,
+                       LightPattern::SunGlow,
+                       500,
+                       0)
+                       .ok());
+    CHECK_SENSING(service.tick(0).ok());
+    CHECK_SENSING(output.last_pattern == LightPattern::SunGlow);
+
+    CHECK_SENSING(service.request(
+                       LightRequestSource::Speech,
+                       LightPattern::ListeningBreath,
+                       800,
+                       10,
+                       100)
+                       .ok());
+    CHECK_SENSING(service.tick(10).ok());
+    CHECK_SENSING(output.last_pattern == LightPattern::ListeningBreath);
+    CHECK_SENSING(output.intensity == 800);
+    CHECK_SENSING(!service.interferes_with_illumination());
+    CHECK_SENSING(service.request(
+                       LightRequestSource::Growth,
+                       LightPattern::GrowthRise,
+                       1000,
+                       20,
+                       50)
+                       .ok());
+    CHECK_SENSING(service.tick(20).ok());
+    CHECK_SENSING(output.last_pattern == LightPattern::GrowthRise);
+    CHECK_SENSING(service.interferes_with_illumination());
+    CHECK_SENSING(service.tick(80).ok());
+    CHECK_SENSING(output.last_pattern == LightPattern::ListeningBreath);
+    CHECK_SENSING(service.tick(120).ok());
+    CHECK_SENSING(output.last_pattern == LightPattern::SunGlow);
+}
+
 }  // namespace
 
 int run_sensing_growth_service_tests() {
@@ -184,6 +260,8 @@ int run_sensing_growth_service_tests() {
     test_climate_requires_both_values_and_uses_hysteresis();
     test_growth_uses_measured_position_and_keeps_one_pending_credit();
     test_growth_limit_expiry_cooldown_and_invalid_feedback();
+    test_battery_levels_and_sensor_fault();
+    test_light_priority_and_expiry_restore_background();
     return failures;
 }
 

@@ -18,6 +18,9 @@ public:
     virtual bool receive(BleFrame& frame) = 0;
     virtual Status send(const std::uint8_t* data, std::size_t size) = 0;
     [[nodiscard]] virtual bool connected() const = 0;
+    [[nodiscard]] virtual bool secure() const { return false; }
+    [[nodiscard]] virtual bool bonded() const { return false; }
+    virtual Status forget_bonds() { return Status::failure(ErrorCode::Unsupported); }
 };
 
 }  // namespace plant

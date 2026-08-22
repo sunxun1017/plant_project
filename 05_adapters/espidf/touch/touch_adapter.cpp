@@ -5,14 +5,26 @@
 
 namespace plant {
 
-using Config = bsp::v1::BoardConfig;
+using V1Config = bsp::v1::BoardConfig;
+
+EspTouchAdapter::EspTouchAdapter() noexcept
+    : EspTouchAdapter(EspTouchConfig{
+          V1Config::Gpio::touch_input,
+          V1Config::Touch::active_high,
+          V1Config::Touch::debounce_ms,
+          V1Config::Touch::long_press_ms,
+          0,
+          V1Config::Touch::enable_internal_pull_down,
+      }) {}
+
+EspTouchAdapter::EspTouchAdapter(EspTouchConfig config) noexcept : config_(config) {}
 
 Status EspTouchAdapter::initialize() {
     gpio_config_t config{};
-    config.pin_bit_mask = 1ULL << Config::Gpio::touch_input;
+    config.pin_bit_mask = 1ULL << config_.gpio;
     config.mode = GPIO_MODE_INPUT;
-    config.pull_down_en = Config::Touch::enable_internal_pull_down ? GPIO_PULLDOWN_ENABLE
-                                                                   : GPIO_PULLDOWN_DISABLE;
+    config.pull_down_en = config_.enable_internal_pull_down ? GPIO_PULLDOWN_ENABLE
+                                                            : GPIO_PULLDOWN_DISABLE;
     config.pull_up_en = GPIO_PULLUP_DISABLE;
     config.intr_type = GPIO_INTR_DISABLE;
     if (gpio_config(&config) != ESP_OK) {
@@ -36,19 +48,28 @@ bool EspTouchAdapter::poll(std::uint64_t now_ms, TouchGesture& gesture) {
     }
 
     if (raw_pressed_ != stable_pressed_ &&
-        now_ms - raw_changed_ms_ >= Config::Touch::debounce_ms) {
+        now_ms - raw_changed_ms_ >= config_.debounce_ms) {
         stable_pressed_ = raw_pressed_;
         if (stable_pressed_) {
             pressed_since_ms_ = now_ms;
             long_press_reported_ = false;
+            factory_reset_reported_ = false;
         } else if (!long_press_reported_) {
             gesture = TouchGesture::SingleTap;
             return true;
         }
     }
 
+    if (stable_pressed_ && config_.factory_reset_hold_ms != 0 &&
+        !factory_reset_reported_ &&
+        now_ms - pressed_since_ms_ >= config_.factory_reset_hold_ms) {
+        factory_reset_reported_ = true;
+        long_press_reported_ = true;
+        gesture = TouchGesture::FactoryResetHold;
+        return true;
+    }
     if (stable_pressed_ && !long_press_reported_ &&
-        now_ms - pressed_since_ms_ >= Config::Touch::long_press_ms) {
+        now_ms - pressed_since_ms_ >= config_.long_press_ms) {
         long_press_reported_ = true;
         gesture = TouchGesture::LongPress;
         return true;
@@ -57,8 +78,8 @@ bool EspTouchAdapter::poll(std::uint64_t now_ms, TouchGesture& gesture) {
 }
 
 bool EspTouchAdapter::read_pressed() const noexcept {
-    const bool level = gpio_get_level(static_cast<gpio_num_t>(Config::Gpio::touch_input)) != 0;
-    return Config::Touch::active_high ? level : !level;
+    const bool level = gpio_get_level(static_cast<gpio_num_t>(config_.gpio)) != 0;
+    return config_.active_high ? level : !level;
 }
 
 }  // namespace plant
