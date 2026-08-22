@@ -75,7 +75,7 @@ struct ProductConfig final {
         static constexpr char device_name[] = "Plant-V2-C3";
         static constexpr std::uint32_t product_id = 0x504C414EU;  // "PLAN"
         static constexpr std::uint32_t hardware_revision = 2;
-        static constexpr std::uint32_t firmware_version = 0x00020000U;
+        static constexpr std::uint32_t firmware_version = 0x00020001U;
         static constexpr std::size_t ota_chunk_size = 496;
     };
 
