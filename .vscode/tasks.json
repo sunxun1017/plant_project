@@ -1,0 +1,35 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "clangd: 配置主机构建",
+            "type": "process",
+            "command": "cmake",
+            "args": [
+                "-S",
+                "${workspaceFolder}",
+                "-B",
+                "${workspaceFolder}/build/host",
+                "-G",
+                "Ninja",
+                "-DBUILD_TESTING=ON",
+                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "clangd: 更新编译数据库",
+            "type": "process",
+            "command": "cmake",
+            "args": [
+                "-E",
+                "copy_if_different",
+                "${workspaceFolder}/build/host/compile_commands.json",
+                "${workspaceFolder}/compile_commands.json"
+            ],
+            "dependsOrder": "sequence",
+            "dependsOn": "clangd: 配置主机构建",
+            "problemMatcher": []
+        }
+    ]
+}

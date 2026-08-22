@@ -1,0 +1,7 @@
+# Generated CMake and ESP-IDF output.
+/build/
+/compile_commands.json
+
+# Local editor indexes.
+/.cache/
+/.vscode/browse.vc.db*

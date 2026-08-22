@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 if(ESP_PLATFORM)
     set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/07_products/plant_v1")
     include($ENV{IDF_PATH}/tools/cmake/project.cmake)
