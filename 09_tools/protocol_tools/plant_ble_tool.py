@@ -12,7 +12,9 @@ import asyncio
 import binascii
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import struct
+import sys
 from typing import Any
 
 
@@ -24,6 +26,8 @@ VERSION = 1
 VERSION_V2 = 2
 RESPONSE_TYPE = 0x80
 MAX_OTA_CHUNK = 496
+NOTIFY_SUBSCRIBE_ATTEMPTS = 5
+NOTIFY_SUBSCRIBE_RETRY_DELAY_S = 0.5
 
 COMMANDS = {
     "ping": 0x01,
@@ -64,6 +68,8 @@ ILLUMINATION_STATES = ("Dark", "Ambient", "BrightExposure", "SensorFault")
 CLIMATE_STATES = ("TooCold", "TooHot", "TooDry", "TooHumid", "Suitable", "SensorFault")
 BATTERY_STATES = ("Unavailable", "Normal", "Low", "Critical", "SensorFault")
 GROWTH_SOURCES = ("None", "Touch", "SustainedSpeech", "BrightExposure", "SuitableClimate")
+BLUETOOTH_ADDRESS_PATTERN = re.compile(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}")
+BLUEZ_ADAPTER_PATTERN = re.compile(r"hci[0-9]+")
 
 
 @dataclass(frozen=True)
@@ -281,28 +287,147 @@ async def transfer_ota(session: BleSession, args: argparse.Namespace) -> None:
     print("OTA image activated; device should restart after the final response.")
 
 
+def bluetooth_address(value: str) -> str:
+    if BLUETOOTH_ADDRESS_PATTERN.fullmatch(value) is None:
+        raise argparse.ArgumentTypeError("BLE address must use XX:XX:XX:XX:XX:XX format")
+    return value.upper()
+
+
+def bluez_adapter(value: str) -> str:
+    if BLUEZ_ADAPTER_PATTERN.fullmatch(value) is None:
+        raise argparse.ArgumentTypeError("BlueZ adapter must use hci<number> format")
+    return value
+
+
+def bluez_device_path(address: str, adapter: str) -> str:
+    return f"/org/bluez/{adapter}/dev_{address.replace(':', '_')}"
+
+
+def make_known_bluez_device(address: str, adapter: str) -> Any:
+    """Build a Bleak target for a device already retained by BlueZ.
+
+    A connected peripheral stops advertising, so a scan cannot rediscover it. BlueZ keeps
+    paired and connected devices in its object tree; supplying that object path lets Bleak
+    reuse the known device instead of starting another address scan.
+    """
+    from bleak.backends.device import BLEDevice
+
+    return BLEDevice(
+        address,
+        None,
+        {"path": bluez_device_path(address, adapter), "props": {}},
+    )
+
+
+async def resolve_ble_target(
+    args: argparse.Namespace,
+    scanner: Any,
+    known_bluez_device_factory: Any = make_known_bluez_device,
+) -> Any:
+    if args.address is None:
+        print(f"scanning for {args.name} ...")
+        target = await scanner.find_device_by_name(args.name, timeout=args.scan_timeout)
+        if target is None:
+            raise TimeoutError(f"BLE device {args.name!r} was not found while advertising")
+        return target
+
+    print(f"scanning for BLE address {args.address} ...")
+    target = await scanner.find_device_by_address(args.address, timeout=args.scan_timeout)
+    if target is not None:
+        return target
+
+    if sys.platform.startswith("linux"):
+        print(
+            "device is not advertising; trying the paired/connected BlueZ object "
+            f"on {args.bluez_adapter} ..."
+        )
+        return known_bluez_device_factory(args.address, args.bluez_adapter)
+
+    raise TimeoutError(f"BLE device {args.address} was not found while advertising")
+
+
+def connection_failure_message(error: BaseException, target_description: str) -> str:
+    detail = str(error) or error.__class__.__name__
+    if "le-connection-abort-by-local" in detail:
+        return (
+            f"BLE connection to {target_description} was aborted by local BlueZ; "
+            "stop scanning, reset the controller or C3, and retry without pairing again"
+        )
+    if error.__class__.__name__ == "BleakDeviceNotFoundError":
+        return (
+            f"BLE device {target_description} is not present in the BlueZ object cache and "
+            "was not advertising; reset the C3 and retry"
+        )
+    if isinstance(error, TimeoutError) or error.__class__.__name__ == "TimeoutError":
+        return (
+            f"BLE connection to {target_description} timed out; the bond is not deleted, so "
+            "stop scanning, reset the local controller or C3, and retry"
+        )
+    return f"BLE connection to {target_description} failed: {detail}"
+
+
+async def start_notify_with_retry(
+    client: Any,
+    callback: Any,
+    attempts: int = NOTIFY_SUBSCRIBE_ATTEMPTS,
+    retry_delay_s: float = NOTIFY_SUBSCRIBE_RETRY_DELAY_S,
+) -> None:
+    """Wait for bonded-link encryption before subscribing to protected notifications."""
+    last_error: BaseException | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            await client.start_notify(RESPONSE_UUID, callback)
+            return
+        except Exception as error:
+            last_error = error
+            if attempt == attempts or not client.is_connected:
+                raise
+            print(
+                "response notification subscription is not ready; "
+                f"waiting for link security ({attempt}/{attempts}) ..."
+            )
+            await asyncio.sleep(retry_delay_s)
+    assert last_error is not None
+    raise last_error
+
+
 async def run_hardware_command(args: argparse.Namespace) -> None:
     try:
         from bleak import BleakClient, BleakScanner
     except ImportError as error:
         raise SystemExit("hardware commands require bleak: python3 -m pip install bleak") from error
 
-    target: Any = args.address
-    if target is None:
-        print(f"scanning for {args.name} ...")
-        target = await BleakScanner.find_device_by_name(args.name, timeout=args.scan_timeout)
-        if target is None:
-            raise TimeoutError(f"BLE device {args.name!r} was not found")
+    target_description = args.address or args.name
+    try:
+        target = await resolve_ble_target(args, BleakScanner)
+    except TimeoutError as error:
+        raise SystemExit(str(error)) from error
 
-    async with BleakClient(target, timeout=args.timeout) as client:
+    client = BleakClient(target, timeout=args.timeout)
+    try:
+        await client.connect()
+    except Exception as error:
+        raise SystemExit(connection_failure_message(error, target_description)) from error
+
+    try:
         session = BleSession(client, args.timeout, args.protocol_version)
-        await client.start_notify(RESPONSE_UUID, session.on_notification)
+        try:
+            await start_notify_with_retry(client, session.on_notification)
+        except Exception as error:
+            detail = str(error) or error.__class__.__name__
+            raise SystemExit(
+                "BLE connected, but encrypted response notification subscription failed "
+                f"after {NOTIFY_SUBSCRIBE_ATTEMPTS} attempts: {detail}"
+            ) from error
         if args.command in ("ping", "state", "stop", "cancel-ota", "forget-bonds"):
             await require_success(session, args.command)
         elif args.command == "behavior":
             await require_success(session, "behavior", bytes((BEHAVIORS[args.behavior],)))
         elif args.command == "ota":
             await transfer_ota(session, args)
+    finally:
+        if client.is_connected:
+            await client.disconnect()
 
 
 def integer(value: str) -> int:
@@ -311,10 +436,20 @@ def integer(value: str) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--address", help="BLE address; omit to scan by name")
+    parser.add_argument(
+        "--address",
+        type=bluetooth_address,
+        help="BLE address; explicitly discovers it, then reuses the known BlueZ object",
+    )
     parser.add_argument("--name", default=DEVICE_NAME, help="device name used while scanning")
     parser.add_argument("--timeout", type=float, default=5.0, help="response timeout in seconds")
     parser.add_argument("--scan-timeout", type=float, default=10.0)
+    parser.add_argument(
+        "--bluez-adapter",
+        type=bluez_adapter,
+        default="hci0",
+        help="Linux BlueZ adapter used for a cached device path (default: hci0)",
+    )
     parser.add_argument(
         "--protocol-version", type=int, choices=(VERSION, VERSION_V2), default=VERSION_V2
     )

@@ -335,6 +335,13 @@ python3 09_tools/protocol_tools/plant_ble_tool.py \
   state
 ```
 
+工具的 `--address` 会先显式发现并保留 Bleak 设备对象，避免连接阶段再次扫描；如果设备已经
+连接并停止广播，Linux 下会回退到 BlueZ 的已知设备对象。`BleakDeviceNotFoundError` 表示
+设备既未广播也不在相应 `--bluez-adapter` 的对象缓存中；`le-connection-abort-by-local`
+表示电脑本地 BlueZ/控制器中止连接，不能归因于 OTA 分片或 C3 擦除了绑定。
+绑定重连时，连接完成可能早于链路加密恢复；工具会对受保护响应特征的 CCCD 订阅执行有限
+重试，避免把短暂的 `GATT Unlikely Error` 误判为服务注册或协议错误。
+
 6. 复位 C3，不擦除 NVS；再次连接并确认加密成功。
 7. 必要时只读导出 NVS 验证命名空间，但不得把密钥内容写入日志或提交仓库。
 

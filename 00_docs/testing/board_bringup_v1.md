@@ -73,8 +73,10 @@ python3 09_tools/protocol_tools/plant_ble_tool.py behavior happy
 python3 09_tools/protocol_tools/plant_ble_tool.py stop
 ```
 
-Linux 若扫描不到设备，先确认当前用户有 BlueZ/D-Bus 权限。也可以用
-`--address <BLE地址>` 跳过按设备名扫描。
+Linux 若扫描不到设备，先确认当前用户有 BlueZ/D-Bus 权限。可以用
+`--address <BLE地址>` 精确选择设备；工具会先显式发现并保留设备对象。若已配对或已连接的
+设备停止广播，Linux 下会回退到 `--bluez-adapter`（默认 `hci0`）中的 BlueZ 已知对象，
+避免把“当前没有广播”误报为地址不存在。
 
 ### 3.5 低功耗
 
