@@ -17,33 +17,47 @@ constexpr ledc_channel_t kChannel = LEDC_CHANNEL_0;
 
 }  // namespace
 
-Status EspServoAdapter::initialize() {
-    gpio_config_t power{};
+Status EspServoAdapter::initialize() {  // 配置舵机电源使能 GPIO 和 LEDC PWM 输出。
+    gpio_config_t power{};  // 舵机电源使能引脚，不是多级电源控制器。
     power.pin_bit_mask = 1ULL << Config::Gpio::servo_power_enable;
     power.mode = GPIO_MODE_OUTPUT;
     if (gpio_config(&power) != ESP_OK) {
         return Status::failure(ErrorCode::MotionFailure);
     }
+    // 初始化时按板级有效电平关闭舵机电源。
+    // TODO: 检查 gpio_set_level() 的返回值，避免电平设置失败却继续初始化。
     gpio_set_level(
         static_cast<gpio_num_t>(Config::Gpio::servo_power_enable),
         Config::Servo::power_enable_active_high ? 0 : 1);
 
-    ledc_timer_config_t timer{};
-    timer.speed_mode = kSpeedMode;
-    timer.duty_resolution = static_cast<ledc_timer_bit_t>(Config::Servo::duty_resolution_bits);
+    ledc_timer_config_t timer{};  // LEDC 定时器提供 PWM 频率和占空比分辨率。
+    timer.speed_mode = kSpeedMode;  // ESP32-C3 使用 LEDC 低速模式。
+    timer.duty_resolution = static_cast<ledc_timer_bit_t>(Config::Servo::duty_resolution_bits); // 当前板级配置为 14 位分辨率。
     timer.timer_num = kTimer;
-    timer.freq_hz = Config::Servo::frequency_hz;
+    timer.freq_hz = Config::Servo::frequency_hz;  // 当前板级配置为舵机常用的 50 Hz。
     timer.clk_cfg = LEDC_AUTO_CLK;
     if (ledc_timer_config(&timer) != ESP_OK) {
         return Status::failure(ErrorCode::MotionFailure);
     }
-
-    ledc_channel_config_t channel{};
+    /*
+     LEDC Timer
+      │ 提供频率和分辨率
+      ▼
+     LEDC Channel
+        │ 提供占空比
+        ▼
+     GPIO Matrix
+        │ 把内部信号路由出去
+        ▼
+    具体 GPIO 引脚
+     */
+    ledc_channel_config_t channel{};  // 通道是 LEDC 内部 PWM 输出通路。
+    // GPIO Matrix 把 LEDC 通道 0 路由到 BSP 指定的舵机 PWM 引脚。
     channel.gpio_num = Config::Gpio::servo_pwm;
     channel.speed_mode = kSpeedMode;
-    channel.channel = kChannel;
-    channel.timer_sel = kTimer;
-    channel.duty = 0;
+    channel.channel = kChannel;  // 当前使用 LEDC 通道 0。
+    channel.timer_sel = kTimer;  // 当前通道使用 LEDC 定时器 0。
+    channel.duty = 0;  // 初始化时占空比为 0，尚未输出有效舵机脉冲。
     channel.hpoint = 0;
     if (ledc_channel_config(&channel) != ESP_OK) {
         return Status::failure(ErrorCode::MotionFailure);

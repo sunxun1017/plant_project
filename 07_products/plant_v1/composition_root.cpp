@@ -26,13 +26,13 @@ using Config = bsp::v1::BoardConfig;
 constexpr char kTag[] = "plant_v1";
 constexpr std::uint64_t kBootConfirmationDelayUs = 10ULL * 1000ULL * 1000ULL;
 
-EspServoAdapter motion;
-EspLedAdapter light;
-EspVibrationAdapter haptic;
-EspTouchAdapter touch;
-EspBleAdapter ble;
-EspPowerAdapter power_port;
-EspOtaAdapter ota_port;
+EspServoAdapter motion; // 舵机运动适配器。
+EspLedAdapter light; // RGB 灯光适配器。
+EspVibrationAdapter haptic; // 振动反馈适配器。
+EspTouchAdapter touch; // 触摸输入适配器。
+EspBleAdapter ble; // BLE 传输适配器。
+EspPowerAdapter power_port; // ESP-IDF 功耗控制适配器。
+EspOtaAdapter ota_port; // ESP-IDF OTA Flash 适配器。
 
 BehaviorService behavior{motion, light, haptic};
 LifecycleService lifecycle;
@@ -62,6 +62,7 @@ bool communication_was_connected = false;
 static_assert(Config::Product::ota_chunk_size == kMaximumOtaChunkSize);
 
 bool initialize_hardware() {
+    // 累积每个初始化结果；调用放在 && 左侧，因此前一项失败后仍会尝试后续设备。
     bool ok = true;
     ok = motion.initialize().ok() && ok;
     ok = light.initialize().ok() && ok;
@@ -92,15 +93,20 @@ void respond_with_current_state(const Command& command, Status status) {
 }  // namespace
 
 void initialize() {
-    const bool hardware_ok = initialize_hardware();
+    const bool hardware_ok = initialize_hardware(); // 使用 composition root 选定的全部硬件适配器执行启动自检。
+    // 硬件失败时报告本次启动失败；只有 PENDING_VERIFY 的 OTA 镜像会实际回滚。
+    // 硬件成功时暂不确认镜像，留到稳定运行十秒后处理。
     const Status ota_boot_status =
         hardware_ok ? Status::success() : ota_port.finalize_boot(false);
+    // 当前表达式中的 boot_ok 实际等价于 hardware_ok；ota_boot_status 表示报告操作是否成功，
+    // 不是一次独立的 OTA 健康检查。
     const bool boot_ok = hardware_ok && ota_boot_status.ok();
+    // TODO: 检查 finish_boot() 返回值，避免生命周期转换失败时仍继续启动主循环。
     (void)application.finish_boot(boot_ok);
     last_activity_us = static_cast<std::uint64_t>(esp_timer_get_time());
-    boot_confirmation_due_us = last_activity_us + kBootConfirmationDelayUs;
+    boot_confirmation_due_us = last_activity_us + kBootConfirmationDelayUs; // 稳定运行十秒后确认 OTA 镜像。
     boot_confirmation_pending = boot_ok;
-    communication_was_connected = communication.connected();
+    communication_was_connected = communication.connected(); // 初始化 BLE 连接边沿检测的基准状态。
     ESP_LOGI(
         kTag,
         "boot product=%s hw=%" PRIu32 " firmware=0x%08" PRIx32 " status=%s",
@@ -110,29 +116,40 @@ void initialize() {
         boot_ok ? "ready" : "fault");
 }
 
+/*
+ * System Task 每轮依次推进输出状态机、处理 OTA 启动确认、检测 BLE 边沿、
+ * 轮询触摸与命令、处理行为完成和低功耗转换，最后让出 CPU。
+ */
 [[noreturn]] void run() {
-    while (true) {
-        const std::uint64_t now_us = static_cast<std::uint64_t>(esp_timer_get_time());
+    while (true) { // FreeRTOS 主任务中的非阻塞系统循环。
+        const std::uint64_t now_us = static_cast<std::uint64_t>(esp_timer_get_time()); // 本轮统一使用的微秒时间基准。
+        // 保存 tick 前的状态，用于检测本轮是否完成了 Interacting -> Idle/Sleeping 转换。
         const DeviceState lifecycle_state_before_tick = lifecycle.snapshot().state;
         (void)application.tick(now_us);
 
+        // 所有成功启动都会进入这里；非 PENDING_VERIFY 镜像由 Adapter 识别后按成功空操作返回。
         if (boot_confirmation_pending && now_us >= boot_confirmation_due_us) {
+            // TODO: 当前“自检”只判断生命周期是否为 Fault；若产品需要更强保证，应加入
+            // 外设健康、关键服务和持久化状态等明确诊断结果。
             const bool self_test_ok =
                 lifecycle.snapshot().state != DeviceState::Fault;
             const Status confirmation_status = ota_port.finalize_boot(self_test_ok);
+            // TODO: 确认接口失败后当前实现不会重试，因为 pending 在错误处理前已清除。
             boot_confirmation_pending = false;
             if (!confirmation_status.ok()) {
+                // OTA 确认接口失败时发送故障事件，由应用统一进入故障处理。
                 (void)application.handle_behavior_event(
                     BehaviorEvent{BehaviorEventType::FaultRaised, 0});
             }
         }
 
-        const bool communication_connected = communication.connected();
-        if (!communication_was_connected && communication_connected) {
-            last_activity_us = now_us;
-            (void)application.handle_communication_connected();
+        const bool communication_connected = communication.connected(); // 查询本轮 BLE 连接状态。
+        if (!communication_was_connected && communication_connected) { // 检测 false -> true 连接边沿。
+            last_activity_us = now_us; // 新连接计为一次用户活动。
+            (void)application.handle_communication_connected(); // 根据生命周期触发 WakeUp 或 Attention。
         }
-        if (communication_was_connected && !communication_connected) {
+        if (communication_was_connected && !communication_connected) { // 检测 true -> false 断开边沿。
+            // 断开时仅在 OTA 已排队、接收或验证过程中取消 OTA。
             (void)application.handle_communication_disconnected();
         }
         communication_was_connected = communication_connected;
@@ -140,12 +157,12 @@ void initialize() {
         TouchGesture gesture{};
         if (touch.poll(now_us / 1000ULL, gesture)) {
             last_activity_us = now_us;
-            (void)application.handle_touch(gesture);
+            (void)application.handle_touch(gesture); // 将稳定手势转换为语义行为。
         }
 
         Command command{};
         bool command_available = false;
-        const Status receive_status = communication.poll(command, command_available);
+        const Status receive_status = communication.poll(command, command_available); // 非阻塞接收并解码 BLE 命令。
         if (command_available) {
             if (!receive_status.ok()) {
                 if (receive_status.code() != ErrorCode::ProtocolFailure) {
@@ -153,9 +170,10 @@ void initialize() {
                 }
             } else {
                 last_activity_us = now_us;
-                const Status execution_status = application.handle_command(command);
-                respond_with_current_state(command, execution_status);
+                const Status execution_status = application.handle_command(command); // 执行语义命令。
+                respond_with_current_state(command, execution_status); // 返回执行结果和最新状态。
                 if (execution_status.ok() && command.type == CommandType::FinishOta) {
+                    // 给 BLE 响应留出发送窗口，再重启到刚激活的 OTA 分区。
                     vTaskDelay(pdMS_TO_TICKS(100));
                     esp_restart();
                 }
@@ -163,11 +181,12 @@ void initialize() {
         }
 
         const DeviceState state_after_tick = lifecycle.snapshot().state;
-        if (state_after_tick == DeviceState::Idle ||
+        if (state_after_tick == DeviceState::Idle || // 行为结束后可能回到 Idle 或进入 Sleeping。
             state_after_tick == DeviceState::Sleeping) {
             const BehaviorRunState behavior_state = behavior.snapshot().state;
-            if (behavior_state == BehaviorRunState::Idle &&
+            if (behavior_state == BehaviorRunState::Idle && // 行为状态机已完成本次执行。
                 lifecycle_state_before_tick == DeviceState::Interacting) {
+                // 从行为完成时重新计算空闲时间，而不是从行为开始时计算。
                 last_activity_us = static_cast<std::uint64_t>(esp_timer_get_time());
             }
         }
@@ -177,18 +196,21 @@ void initialize() {
             now_us - last_activity_us >=
                 static_cast<std::uint64_t>(Config::Interaction::automatic_sleep_ms) * 1000ULL) {
             last_activity_us = now_us;
-            (void)application.handle_idle_timeout();
+            (void)application.handle_idle_timeout(); // Idle 达到自动休眠阈值后启动 Sleep 行为。
         }
+        // Deep Sleep 前，Sleep 行为已经把舵机移动到 BSP 定义的安全休眠位置。
+        // TODO(product): 如果未来需要保存“生长位置”，应持久化语义状态并定义恢复策略，
+        // 不能把断电后机械位置或最后一次 PWM 值当成可靠状态。
         if (lifecycle_state.state == DeviceState::Sleeping &&
             lifecycle_state.power_mode == PowerMode::LightSleep &&
             Config::Power::deep_sleep_enabled && Config::Power::deep_sleep_delay_ms != 0 &&
             now_us - last_activity_us >=
-                static_cast<std::uint64_t>(Config::Power::deep_sleep_delay_ms) * 1000ULL) {
+                static_cast<std::uint64_t>(Config::Power::deep_sleep_delay_ms) * 1000ULL) { // 距最后活动达到深睡眠阈值。
             const OtaState ota_state = ota.snapshot().state;
             (void)power.request_deep_sleep(PowerConditions{
                 communication.connected(),
                 ota_state == OtaState::Receiving || ota_state == OtaState::Verifying,
-                false,
+                false, // TODO: 尚未接入真实 Flash 写入状态，当前固定假设没有写入活动。
             });
         }
         vTaskDelay(pdMS_TO_TICKS(Config::Interaction::system_tick_ms));

@@ -3,19 +3,25 @@
 namespace plant {
 
 Status EspOtaAdapter::finalize_boot(bool self_test_ok) {
+    // 获取当前正在运行的应用分区，例如 ota_0 或 ota_1。
     const esp_partition_t* running_partition = esp_ota_get_running_partition();
     if (running_partition == nullptr) {
         return Status::failure(ErrorCode::OtaFailure);
     }
 
     esp_ota_img_states_t state{};
+    // 只有首次启动且处于 PENDING_VERIFY 的 OTA 镜像才需要确认或回滚。
+    // 未找到 OTA 状态或镜像已经是其他稳定状态时无需重复处理。
     const esp_err_t state_status = esp_ota_get_state_partition(running_partition, &state);
+    // TODO: 先单独处理查询错误，再读取 state；当前组合条件依赖 state{} 的默认值
+    // 不等于 PENDING_VERIFY，错误分支的正确性不应依赖这个隐含前提。
     if (state_status == ESP_ERR_NOT_FOUND || state != ESP_OTA_IMG_PENDING_VERIFY) {
         return state_status == ESP_OK || state_status == ESP_ERR_NOT_FOUND
                    ? Status::success()
                    : Status::failure(ErrorCode::OtaFailure);
     }
 
+    // 自检通过时确认当前镜像并取消回滚；失败时标记镜像无效并重启到旧固件。
     const esp_err_t finalize_status = self_test_ok
                                           ? esp_ota_mark_app_valid_cancel_rollback()
                                           : esp_ota_mark_app_invalid_rollback_and_reboot();

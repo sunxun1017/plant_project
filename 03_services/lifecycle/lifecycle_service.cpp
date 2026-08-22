@@ -3,7 +3,7 @@
 namespace plant {
 
 LifecycleSnapshot LifecycleService::snapshot() const noexcept {
-    return LifecycleSnapshot{state_, power_mode_};
+    return LifecycleSnapshot{state_, power_mode_};  // 返回调用时的生命周期和功耗模式快照。
 }
 
 Status LifecycleService::finish_boot(bool self_test_passed) noexcept {

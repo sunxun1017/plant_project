@@ -23,7 +23,7 @@ std::uint8_t triangle(std::uint64_t elapsed_us, std::uint64_t period_us) {
 
 }  // namespace
 
-Status EspLedAdapter::initialize() {
+Status EspLedAdapter::initialize() {  // RGB 三个通道共享一个 LEDC 定时器的频率和分辨率。
     ledc_timer_config_t timer{};
     timer.speed_mode = kMode;
     timer.duty_resolution = static_cast<ledc_timer_bit_t>(Config::Led::duty_resolution_bits);
@@ -34,6 +34,8 @@ Status EspLedAdapter::initialize() {
         return Status::failure(ErrorCode::LightingFailure);
     }
 
+    // GPIO 数组与 LEDC 通道数组按 RGB 顺序一一对应；颜色由三路占空比的比例决定，
+    // 不是由 PWM 频率混合产生。
     const int pins[]{Config::Gpio::led_red_pwm, Config::Gpio::led_green_pwm,
                      Config::Gpio::led_blue_pwm};
     const ledc_channel_t channels[]{kRed, kGreen, kBlue};
@@ -43,6 +45,7 @@ Status EspLedAdapter::initialize() {
         channel.speed_mode = kMode;
         channel.channel = channels[index];
         channel.timer_sel = kTimer;
+        // 初始化阶段保持熄灭；呼吸波形由 tick() 计算，并由 set_rgb() 更新占空比。
         channel.duty = 0;
         if (ledc_channel_config(&channel) != ESP_OK) {
             return Status::failure(ErrorCode::LightingFailure);

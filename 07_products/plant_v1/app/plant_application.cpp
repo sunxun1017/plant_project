@@ -97,6 +97,7 @@ Status PlantApplication::handle_idle_timeout() {
     if (lifecycle_.snapshot().state != DeviceState::Idle) {
         return Status::failure(ErrorCode::InvalidState);
     }
+    // WakeSleep 表示睡眠/唤醒类高优先级转换原因，不是“当前处于唤醒状态”。
     return start_behavior(Behavior::Sleep, InterruptionReason::WakeSleep);
 }
 
@@ -189,22 +190,25 @@ OtaSnapshot PlantApplication::ota_snapshot() const noexcept {
     return ota_.snapshot();
 }
 
-Status PlantApplication::start_behavior(Behavior behavior, InterruptionReason reason) {
-    const LifecycleSnapshot before = lifecycle_.snapshot();
+Status PlantApplication::start_behavior(Behavior behavior, InterruptionReason reason) { // 所有非阻塞语义行为的统一启动入口。
+    const LifecycleSnapshot before = lifecycle_.snapshot(); // 保存启动行为前的生命周期和功耗模式。
     if (before.state == DeviceState::Sleeping &&
         before.power_mode == PowerMode::LightSleep && behavior == Behavior::WakeUp) {
-        const Status wake_status = power_.handle_wake();
+        const Status wake_status = power_.handle_wake(); // 先退出轻睡眠，再启动 WakeUp 表现。
         if (!wake_status.ok()) {
             return wake_status;
         }
     }
+    // begin_behavior() 会先把普通行为的生命周期切换为 Interacting。
     const Status lifecycle_status = lifecycle_.begin_behavior(behavior);
     if (!lifecycle_status.ok()) {
         return lifecycle_status;
     }
 
-    const Status behavior_status = behavior_.start(behavior, reason);
-    if (!behavior_status.ok()) {
+    // TODO: behavior_.start() 若以 Busy/Unsupported 等无 outcome 错误返回，当前代码不会
+    // 恢复 before，生命周期可能停留在 Interacting；需要为这种失败补偿状态转换。
+    const Status behavior_status = behavior_.start(behavior, reason); // 相同行为正在运行时按幂等成功处理。
+    if (!behavior_status.ok()) { // 执行器启动失败会产生 Faulted outcome，并在这里同步生命周期。
         const BehaviorOutcome outcome = behavior_.take_outcome();
         if (outcome != BehaviorOutcome::None) {
             (void)apply_behavior_outcome(outcome);
