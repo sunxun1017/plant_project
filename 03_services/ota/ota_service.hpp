@@ -25,6 +25,14 @@ public:
         bool allow_downgrade = false) noexcept;
 
     [[nodiscard]] Status validate(const OtaImageMetadata& metadata) const noexcept;
+    Status finalize_boot(bool self_test_ok);
+    void schedule_boot_confirmation(
+        std::uint64_t now_us,
+        std::uint64_t retry_interval_us) noexcept;
+    Status poll_boot_confirmation(
+        std::uint64_t now_us,
+        bool self_test_ok,
+        bool& attempted);
     Status begin(const OtaImageMetadata& metadata);
     Status write_chunk(
         std::size_t offset,
@@ -45,6 +53,9 @@ private:
     OtaState state_{OtaState::Idle};
     OtaImageMetadata metadata_{};
     std::size_t received_bytes_{0};
+    std::uint64_t boot_confirmation_reference_us_{0};
+    std::uint64_t boot_confirmation_retry_interval_us_{0};
+    bool boot_confirmation_pending_{false};
 };
 
 }  // namespace plant

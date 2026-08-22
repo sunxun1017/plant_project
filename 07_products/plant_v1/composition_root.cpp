@@ -55,8 +55,6 @@ OtaService ota{
 PlantApplication application{behavior, lifecycle, power, ota};
 CommunicationService communication{ble};
 std::uint64_t last_activity_us = 0;
-std::uint64_t boot_confirmation_due_us = 0;
-bool boot_confirmation_pending = false;
 bool communication_was_connected = false;
 
 static_assert(Config::Product::ota_chunk_size == kMaximumOtaChunkSize);
@@ -97,7 +95,7 @@ void initialize() {
     // 硬件失败时报告本次启动失败；只有 PENDING_VERIFY 的 OTA 镜像会实际回滚。
     // 硬件成功时暂不确认镜像，留到稳定运行十秒后处理。
     const Status ota_boot_status =
-        hardware_ok ? Status::success() : ota_port.finalize_boot(false);
+        hardware_ok ? Status::success() : ota.finalize_boot(false);
     // ota_boot_status 表示失败报告操作是否成功，不是一次独立的 OTA 健康检查。
     const bool platform_boot_ok = hardware_ok && ota_boot_status.ok();
     const Status application_boot_status = application.finish_boot(platform_boot_ok);
@@ -105,14 +103,15 @@ void initialize() {
     if (!application_boot_status.ok()) {
         ESP_LOGE(kTag, "application boot state transition failed");
         // 生命周期无法完成启动时，也把待验证 OTA 镜像报告为启动失败。
-        const Status rollback_status = ota_port.finalize_boot(false);
+        const Status rollback_status = ota.finalize_boot(false);
         if (!rollback_status.ok()) {
             ESP_LOGE(kTag, "failed to report application boot failure to OTA rollback");
         }
     }
     last_activity_us = static_cast<std::uint64_t>(esp_timer_get_time());
-    boot_confirmation_due_us = last_activity_us + kBootConfirmationDelayUs; // 稳定运行十秒后确认 OTA 镜像。
-    boot_confirmation_pending = boot_ok;
+    if (boot_ok) {
+        ota.schedule_boot_confirmation(last_activity_us, kBootConfirmationDelayUs); // 稳定运行十秒后确认 OTA 镜像。
+    }
     communication_was_connected = communication.connected(); // 初始化 BLE 连接边沿检测的基准状态。
     ESP_LOGI(
         kTag,
@@ -135,16 +134,18 @@ void initialize() {
         (void)application.tick(now_us);
 
         // 所有成功启动都会进入这里；非 PENDING_VERIFY 镜像由 Adapter 识别后按成功空操作返回。
-        if (boot_confirmation_pending && now_us >= boot_confirmation_due_us) {
-            // TODO: 当前“自检”只判断生命周期是否为 Fault；若产品需要更强保证，应加入
-            // 外设健康、关键服务和持久化状态等明确诊断结果。
-            const bool self_test_ok =
-                lifecycle.snapshot().state != DeviceState::Fault;
-            const Status confirmation_status = ota_port.finalize_boot(self_test_ok);
-            // TODO: 确认接口失败后当前实现不会重试，因为 pending 在错误处理前已清除。
-            boot_confirmation_pending = false;
+        // 启动阶段已验证所有硬件适配器初始化成功；稳定窗口内未进入 Fault
+        // 作为当前 V1 的运行自检结果。
+        bool boot_confirmation_attempted = false;
+        const bool self_test_ok = lifecycle.snapshot().state != DeviceState::Fault;
+        const Status confirmation_status = ota.poll_boot_confirmation(
+            now_us,
+            self_test_ok,
+            boot_confirmation_attempted);
+        if (boot_confirmation_attempted) {
             if (!confirmation_status.ok()) {
-                // OTA 确认接口失败时发送故障事件，由应用统一进入故障处理。
+                // 失败时 OtaService 保留待确认状态并延迟重试；故障事件使下一次
+                // 自检失败，从而要求 Adapter 回滚仍处于 PENDING_VERIFY 的镜像。
                 (void)application.handle_behavior_event(
                     BehaviorEvent{BehaviorEventType::FaultRaised, 0});
             }
@@ -217,7 +218,7 @@ void initialize() {
             (void)power.request_deep_sleep(PowerConditions{
                 communication.connected(),
                 ota_state == OtaState::Receiving || ota_state == OtaState::Verifying,
-                false, // TODO: 尚未接入真实 Flash 写入状态，当前固定假设没有写入活动。
+                false, // 当前 V1 没有独立配置持久化写入路径；OTA 写入由上一条件单独保护。
             });
         }
         vTaskDelay(pdMS_TO_TICKS(Config::Interaction::system_tick_ms));

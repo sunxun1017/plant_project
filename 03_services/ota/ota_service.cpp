@@ -27,6 +27,39 @@ Status OtaService::validate(const OtaImageMetadata& metadata) const noexcept {
     return Status::success();
 }
 
+Status OtaService::finalize_boot(bool self_test_ok) {
+    return ota_.finalize_boot(self_test_ok);
+}
+
+void OtaService::schedule_boot_confirmation(
+    std::uint64_t now_us,
+    std::uint64_t retry_interval_us) noexcept {
+    boot_confirmation_reference_us_ = now_us;
+    boot_confirmation_retry_interval_us_ = retry_interval_us;
+    boot_confirmation_pending_ = true;
+}
+
+Status OtaService::poll_boot_confirmation(
+    std::uint64_t now_us,
+    bool self_test_ok,
+    bool& attempted) {
+    attempted = false;
+    if (!boot_confirmation_pending_ ||
+        now_us - boot_confirmation_reference_us_ < boot_confirmation_retry_interval_us_) {
+        return Status::success();
+    }
+
+    attempted = true;
+    const Status status = ota_.finalize_boot(self_test_ok);
+    if (status.ok()) {
+        boot_confirmation_pending_ = false;
+    } else {
+        // 保留待确认状态，并从本次失败开始重新计算重试间隔。
+        boot_confirmation_reference_us_ = now_us;
+    }
+    return status;
+}
+
 Status OtaService::begin(const OtaImageMetadata& metadata) {
     if (state_ == OtaState::Receiving || state_ == OtaState::Verifying) {
         return Status::failure(ErrorCode::Busy);

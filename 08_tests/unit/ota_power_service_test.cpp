@@ -38,6 +38,12 @@ public:
 
 class FakeOta final : public IOtaPort {
 public:
+    Status finalize_boot(bool self_test_ok) override {
+        ++finalize_boot_count;
+        last_self_test_ok = self_test_ok;
+        return finalize_boot_status;
+    }
+
     std::size_t available_image_space() const override { return capacity; }
 
     Status begin(const OtaImageMetadata& metadata) override {
@@ -66,12 +72,15 @@ public:
     Status begin_status{};
     Status write_status{};
     Status verify_status{};
+    Status finalize_boot_status{};
     OtaImageMetadata last_metadata{};
     std::size_t last_offset{0};
     std::size_t bytes_written{0};
     int begin_count{0};
     int verify_count{0};
     int abort_count{0};
+    int finalize_boot_count{0};
+    bool last_self_test_ok{false};
 };
 
 int failures = 0;
@@ -197,6 +206,39 @@ void test_ota_verification_failure_keeps_current_firmware() {
     CHECK_LOCAL(lifecycle.snapshot().state == DeviceState::Idle);
 }
 
+void test_boot_confirmation_failure_remains_pending_for_retry() {
+    LifecycleService lifecycle;
+    FakeOta port;
+    port.finalize_boot_status = Status::failure(ErrorCode::OtaFailure);
+    OtaService ota{lifecycle, port, {0x504C414E, 1, 1}};
+    bool attempted = true;
+
+    ota.schedule_boot_confirmation(100, 10);
+    CHECK_LOCAL(ota.poll_boot_confirmation(109, true, attempted).ok());
+    CHECK_LOCAL(!attempted);
+    CHECK_LOCAL(port.finalize_boot_count == 0);
+
+    CHECK_LOCAL(ota.poll_boot_confirmation(110, true, attempted).code() ==
+                ErrorCode::OtaFailure);
+    CHECK_LOCAL(attempted);
+    CHECK_LOCAL(port.finalize_boot_count == 1);
+    CHECK_LOCAL(port.last_self_test_ok);
+
+    CHECK_LOCAL(ota.poll_boot_confirmation(119, false, attempted).ok());
+    CHECK_LOCAL(!attempted);
+    CHECK_LOCAL(port.finalize_boot_count == 1);
+
+    port.finalize_boot_status = Status::success();
+    CHECK_LOCAL(ota.poll_boot_confirmation(120, false, attempted).ok());
+    CHECK_LOCAL(attempted);
+    CHECK_LOCAL(port.finalize_boot_count == 2);
+    CHECK_LOCAL(!port.last_self_test_ok);
+
+    CHECK_LOCAL(ota.poll_boot_confirmation(130, false, attempted).ok());
+    CHECK_LOCAL(!attempted);
+    CHECK_LOCAL(port.finalize_boot_count == 2);
+}
+
 }  // namespace
 
 int run_ota_power_service_tests() {
@@ -207,6 +249,7 @@ int run_ota_power_service_tests() {
     test_ota_happy_path();
     test_ota_rejects_unsigned_downgrade_and_wrong_offset();
     test_ota_verification_failure_keeps_current_firmware();
+    test_boot_confirmation_failure_remains_pending_for_retry();
     return failures;
 }
 

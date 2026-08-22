@@ -67,6 +67,7 @@ public:
 
 class AppOta final : public IOtaPort {
 public:
+    Status finalize_boot(bool) override { return Status::success(); }
     std::size_t available_image_space() const override { return 4096; }
     Status begin(const OtaImageMetadata&) override {
         ++begin_count;
