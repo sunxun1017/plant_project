@@ -543,6 +543,10 @@ Protocol
 
 都不应该修改。
 
+V2 当前的 `BoardConfig` 仍混合了部分产品策略和传输默认值；现状、风险与迁移目标见
+[Plant V2 BSP 与配置边界审查](v2_bsp_boundary_review.md)。BSP 文件少不是问题，判断标准
+是它只拥有板级连接、电气极性、硬件能力和安全硬限制。
+
 ---
 
 ## 12. Product Composition

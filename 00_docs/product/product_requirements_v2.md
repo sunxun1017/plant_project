@@ -14,7 +14,9 @@ Plant V2 继承 V1 的触摸、BLE、灯光、振动、OTA 和两级低功耗能
 V2 的新增和变化部分；没有被本文件修改的 V1 安全与生命周期要求继续有效。
 
 详细规则见 [V2 行为与感知映射](behavior_mapping_v2.md)，参考电路见
-[V2 低成本感知硬件方案](hardware_sensing_v2.md)。
+[V2 低成本感知硬件方案](hardware_sensing_v2.md)。完整开发与问题复盘见
+[V2 开发、调试与验证流程](../development/plant_v2_development_and_debugging.md)；低功耗和拥挤
+BLE 环境的体验取舍仍处于 [ADR 0002](../adr/0002-v2-power-and-ble-experience.md) 提案阶段。
 
 ## 2. V2 产品目标
 
@@ -219,6 +221,11 @@ V2 遥测在 V1 基础上增加：
 V2 协议必须使用新版本号或显式能力位，V1 客户端不得把新增字段误解析成 V1 消息。
 
 ## 13. 生命周期和低功耗
+
+当前 `5 分钟自动休眠 + 再等待 30 分钟进入深睡眠` 只是尚未经过整机功耗和发现时延验证
+的工程基线，不是已经冻结的量产体验。尤其要先决定休眠期间是否继续累计晒太阳和适宜
+温湿度；在 [ADR 0002](../adr/0002-v2-power-and-ble-experience.md) 转为 Accepted 前，不得
+把该默认值当作产品结论。
 
 - `Booting` 自检增加电位器有效性、麦克风静态范围、光感范围、AHT21 与 MAX17048
   通信/CRC 或数值检查。
