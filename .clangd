@@ -1,0 +1,8 @@
+CompileFlags:
+  # ESP-IDF's GCC-only options are not understood by clangd.
+  # They remain present for the real riscv32-esp-elf build.
+  Remove:
+    - -fno-shrink-wrap
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
+    - -mtune=*

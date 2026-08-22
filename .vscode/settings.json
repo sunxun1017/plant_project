@@ -15,13 +15,12 @@
         "--background-index",
         "--completion-style=detailed",
         "--header-insertion=never",
-        "--query-driver=/usr/bin/c++"
+        "--query-driver=/usr/bin/c++,/home/sx/.espressif/tools/riscv32-esp-elf/*/riscv32-esp-elf/bin/riscv32-esp-elf-*"
     ],
     "cmake.buildDirectory": "${workspaceFolder}/build/host",
-    "cmake.configureOnOpen": true,
+    "cmake.configureOnOpen": false,
     "cmake.configureSettings": {
         "BUILD_TESTING": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-    },
-    "cmake.copyCompileCommands": "${workspaceFolder}/compile_commands.json"
+    }
 }
