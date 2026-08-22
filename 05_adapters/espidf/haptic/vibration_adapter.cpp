@@ -35,7 +35,8 @@ Status EspVibrationAdapter::initialize() {
         static_cast<ledc_timer_bit_t>(config_.duty_resolution_bits);
     timer.timer_num = kTimer;
     timer.freq_hz = config_.frequency_hz;
-    timer.clk_cfg = LEDC_AUTO_CLK;
+    // ESP32-C3 的所有 LEDC 定时器共享一个全局时钟源；与舵机、RGB 统一使用 XTAL。
+    timer.clk_cfg = LEDC_USE_XTAL_CLK;
     if (ledc_timer_config(&timer) != ESP_OK) {
         return Status::failure(ErrorCode::HapticFailure);
     }

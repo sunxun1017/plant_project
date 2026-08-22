@@ -103,8 +103,12 @@ Status EspBleAdapter::initialize() {
     characteristics[0].flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP |
                                BLE_GATT_CHR_F_WRITE_ENC;
     characteristics[1].uuid = &response_uuid.u;
+    // NimBLE 要求每个 Characteristic 都提供 access_cb，即使该值只用于服务端通知。
+    // CCCD 订阅也必须在加密链路上完成，实际发送还会再次检查 connected/secure/bonded。
+    characteristics[1].access_cb = gatt_access;
     characteristics[1].val_handle = &response_value_handle_;
-    characteristics[1].flags = BLE_GATT_CHR_F_NOTIFY;
+    characteristics[1].flags =
+        BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC;
     services[0].type = BLE_GATT_SVC_TYPE_PRIMARY;
     services[0].uuid = &service_uuid.u;
     services[0].characteristics = characteristics;
@@ -169,6 +173,8 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
     switch (event->type) {
         case BLE_GAP_EVENT_CONNECT:
             if (event->connect.status == 0) {
+                ESP_LOGI(kTag, "BLE peer connected handle=%u",
+                         event->connect.conn_handle);
                 self->connection_handle_.store(event->connect.conn_handle);
                 self->connected_.store(true);
                 self->secure_.store(false);
@@ -178,10 +184,14 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
                         event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
                 }
             } else {
+                ESP_LOGW(kTag, "BLE connection attempt failed status=%d",
+                         event->connect.status);
                 (void)self->start_advertising();
             }
             return 0;
         case BLE_GAP_EVENT_DISCONNECT:
+            ESP_LOGI(kTag, "BLE peer disconnected reason=%d",
+                     event->disconnect.reason);
             self->connected_.store(false);
             self->secure_.store(false);
             self->bonded_.store(false);
@@ -192,6 +202,8 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
             (void)self->start_advertising();
             return 0;
         case BLE_GAP_EVENT_ENC_CHANGE: {
+            ESP_LOGI(kTag, "BLE encryption change handle=%u status=%d",
+                     event->enc_change.conn_handle, event->enc_change.status);
             ble_gap_conn_desc descriptor{};
             if (event->enc_change.status == 0 &&
                 ble_gap_conn_find(event->enc_change.conn_handle, &descriptor) == 0) {
@@ -205,6 +217,7 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
         }
         case BLE_GAP_EVENT_REPEAT_PAIRING:
             // 不自动删除已持久化的绑定；解绑必须走显式的本机恢复流程。
+            ESP_LOGW(kTag, "BLE peer requested repeat pairing; preserving existing bond");
             return BLE_GAP_REPEAT_PAIRING_IGNORE;
         default:
             return 0;

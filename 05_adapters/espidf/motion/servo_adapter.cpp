@@ -36,7 +36,8 @@ Status EspServoAdapter::initialize() {  // 配置舵机电源使能 GPIO 和 LED
     timer.duty_resolution = static_cast<ledc_timer_bit_t>(Config::Servo::duty_resolution_bits); // 当前板级配置为 14 位分辨率。
     timer.timer_num = kTimer;
     timer.freq_hz = Config::Servo::frequency_hz;  // 当前板级配置为舵机常用的 50 Hz。
-    timer.clk_cfg = LEDC_AUTO_CLK;
+    // ESP32-C3 的所有 LEDC 定时器共享一个全局时钟源；与 RGB、振动统一使用 XTAL。
+    timer.clk_cfg = LEDC_USE_XTAL_CLK;
     if (ledc_timer_config(&timer) != ESP_OK) {
         return Status::failure(ErrorCode::MotionFailure);
     }

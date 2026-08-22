@@ -6,6 +6,18 @@
 
 namespace plant::bsp::v2 {
 
+template <std::size_t Size>
+constexpr bool pins_are_unique(const std::array<int, Size>& pins) {
+    for (std::size_t left = 0; left < Size; ++left) {
+        for (std::size_t right = left + 1; right < Size; ++right) {
+            if (pins[left] == pins[right]) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 // V2 原理图冻结前的集中式板级基线。GPIO、ADC 端点和阈值都必须经过
 // 00_docs/testing/board_bringup_v2.md 的样机流程标定后才能用于量产。
 struct BoardConfig final {
@@ -36,10 +48,28 @@ struct BoardConfig final {
         // 下载和运行时振动/触摸不能同时使用 UART0。
         static constexpr int vibration_pwm = 20;
         static constexpr int touch_input = 21;
-        // GPIO18/19 会占用原生 USB-JTAG；当前基线仅保留 UART0 下载路径。
-        static constexpr int aht21_sda = 18;
-        static constexpr int aht21_scl = 19;
+        // I²C 上拉使 GPIO2/9 在正常启动时保持高电平；BOOT 按键必须仍能把 GPIO9
+        // 强制拉低进入下载模式，AHT21/MAX17048 在复位采样期间不得主动拉低总线。
+        // GPIO18/19 专用于原生 USB Serial/JTAG，不能再分配给板载外设。
+        static constexpr int aht21_sda = 2;
+        static constexpr int aht21_scl = 9;
         static constexpr int microphone_power_enable = 8;
+
+        static constexpr std::array<int, 13> assigned{
+            position_feedback_adc,
+            microphone_envelope_adc,
+            illumination_adc,
+            servo_pwm,
+            servo_power_enable,
+            led_red_pwm,
+            led_green_pwm,
+            led_blue_pwm,
+            vibration_pwm,
+            touch_input,
+            aht21_sda,
+            aht21_scl,
+            microphone_power_enable,
+        };
     };
 
     struct Adc final {
@@ -194,8 +224,9 @@ struct BoardConfig final {
         static constexpr std::uint32_t debounce_ms = 80;
         static constexpr std::uint32_t long_press_ms = 2000;
         static constexpr std::uint32_t factory_reset_hold_ms = 10000;
-        // TTP223 默认持续高电平表示触摸，输出为推挽；灵敏度电容由样机和外壳厚度确定。
-        static constexpr bool enable_internal_pull_down = false;
+        // TTP223 默认持续高电平表示触摸，输出为推挽；弱下拉保证传感器断开时不会把悬空
+        // 输入误判为长按恢复。灵敏度电容由样机和外壳厚度确定。
+        static constexpr bool enable_internal_pull_down = true;
     };
 
     struct Growth final {
@@ -250,6 +281,11 @@ struct BoardConfig final {
 static_assert(BoardConfig::Adc::position_channel == BoardConfig::Gpio::position_feedback_adc);
 static_assert(BoardConfig::Adc::microphone_channel == BoardConfig::Gpio::microphone_envelope_adc);
 static_assert(BoardConfig::Adc::illumination_channel == BoardConfig::Gpio::illumination_adc);
+static_assert(pins_are_unique(BoardConfig::Gpio::assigned));
+static_assert(BoardConfig::Gpio::aht21_sda != 18 && BoardConfig::Gpio::aht21_sda != 19);
+static_assert(BoardConfig::Gpio::aht21_scl != 18 && BoardConfig::Gpio::aht21_scl != 19);
+static_assert(BoardConfig::Gpio::aht21_sda < 12 || BoardConfig::Gpio::aht21_sda > 17);
+static_assert(BoardConfig::Gpio::aht21_scl < 12 || BoardConfig::Gpio::aht21_scl > 17);
 static_assert(BoardConfig::Position::safe_minimum < BoardConfig::Position::neutral);
 static_assert(BoardConfig::Position::neutral < BoardConfig::Position::safe_maximum);
 static_assert(BoardConfig::Position::sleep >= BoardConfig::Position::safe_minimum);

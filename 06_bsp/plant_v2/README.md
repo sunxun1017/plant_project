@@ -1,11 +1,21 @@
+<!--
+ * @Author: sunxun sx2728977548@163.com
+ * @Date: 2026-08-22 14:15:18
+ * @LastEditors: sunxun sx2728977548.com
+ * @LastEditTime: 2026-08-22 15:26:20
+ * @FilePath: /plant_project/06_bsp/plant_v2/README.md
+ * @Description:
+-->
 # Plant V2 BSP
 
 `plant_v2_board.hpp` 是 V2 板级身份、GPIO、ADC 通道、电气极性、安全范围和默认标定值
 的唯一来源。当前数值是交叉编译基线，不是上板结论。
 
 原理图或样机数据变化时只修改该文件，并同步执行
-[`board_bringup_v2.md`](../../00_docs/testing/board_bringup_v2.md)。尤其要确认 GPIO18/19
-占用原生 USB-JTAG 的取舍，以及三路 ADC 的端点、噪声和串扰。
+[`board_bringup_v2.md`](../../00_docs/testing/board_bringup_v2.md)。GPIO18/19 固定保留给原生
+USB Serial/JTAG；AHT21/MAX17048 共用的 I²C 改用 GPIO2/9。两根总线的上拉必须满足正常
+启动电平，GPIO9 上的 BOOT 按键仍须可靠进入下载模式。样机还要确认三路 ADC 的端点、
+噪声和串扰。
 
 当前产品变体固定为普通共阴 5050 RGB 三路 PWM，不是 WS2812B。RGB 三色与 0827 马达
 都必须通过外部低边驱动，不能直接由 ESP32-C3 GPIO 承担负载电流；马达还要有续流/钳位
