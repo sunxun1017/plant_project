@@ -6,7 +6,7 @@
 | --- | --- |
 | 设备名 | `Plant-V1-C3` |
 | Service UUID | `0xFFF0` |
-| Command Characteristic | `0xFFF1`，Write / Write Without Response |
+| Command Characteristic | `0xFFF1`，Write / Write Without Response，要求链路加密 |
 | Response Characteristic | `0xFFF2`，Notify |
 | 首选 MTU | 517 |
 | 最大协议帧 | 512 字节 |
@@ -93,10 +93,14 @@ OTA 分片必须从 offset 0 开始严格连续发送。乱序、重叠、空分
 
 ## 7. 当前安全边界
 
-当前 GATT 服务用于开发联调，尚未强制配对、链路加密和应用层鉴权。生产版本启用远程 OTA 前必须完成：
+- 连接后由设备发起 LE Secure Connections 配对并保存绑定密钥；命令特征要求加密，响应
+  也只在已加密且已绑定的链路上发送。NimBLE 的绑定数据位于 `nvs` 分区，普通复位、意外断电和
+  OTA 分区切换不会主动删除它。
+- 设备没有显示器和键盘，因此使用 Secure Connections Just Works。它提供链路加密但
+  不提供 MITM 身份认证；CRC32 只检测传输错误，也不是鉴权或防重放机制。
+- 当前最多保存 3 个绑定、同时只允许 1 个连接。重复配对不会自动删除原有密钥。
+- V1 没有线上解绑命令；开发阶段只能擦除 NVS/整片 Flash 恢复。V2 增加了加密命令与
+  触摸 10 秒的本地恢复流程。
 
-- BLE Secure Connections 与绑定策略。
-- 正式固件签名验证配置和密钥烧录流程。
-- 防重放或会话授权策略。
-
-客户端提供的 `Signed Image` 标志不是密码学证明；最终可信性必须由 Bootloader/ESP-IDF 镜像签名验证保证。
+客户端提供的 `Signed Image` 标志不是密码学证明；最终可信性必须由 Bootloader/ESP-IDF
+镜像签名验证保证。

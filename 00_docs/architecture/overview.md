@@ -357,7 +357,7 @@ V2 增加位置、声学活动、相对光照和温湿度感知。传感器输�
 Position Potentiometer → Position Adapter ───────────┐
 ECM Envelope ─────────→ Acoustic Activity Service ──┤
 GL5528 Divider ────────→ Light Exposure Service ─────┼→ Growth Service
-AHT20 ─────────────────→ Climate Service ────────────┤       │
+AHT21 ─────────────────→ Climate Service ────────────┤       │
 Touch ─────────────────→ Touch Service ──────────────┘       ▼
                                                        Motion / Lighting
 ```
@@ -366,7 +366,10 @@ Touch ─────────────────→ Touch Service ─�
 过期和执行器占用；Sensor Adapter 不直接控制舵机或灯光。
 
 ECM 链路只向上层提供包络音量和讲话活动，不保存、传输或持久化原始音频。GL5528 只
-表示相对明暗，AHT20 通过非阻塞 I²C 状态机读取温湿度。
+表示相对明暗，AHT21 通过非阻塞 I²C 状态机读取温湿度。
+MAX17048 与 AHT21 共用 I²C，但只向 Battery Service 提供电压和相对电量，不参与生长
+判断。BLE Secure Connections 的长期密钥由 Adapter 持久化到 NVS，OTA 应用分区不拥有
+也不擦除这些密钥。
 
 ---
 
@@ -582,7 +585,9 @@ ESP32-C3
 + Touch Sensor
 + ECM Envelope Sensor
 + GL5528 Light Sensor
-+ AHT20 Temperature/Humidity Sensor
++ AHT21 Temperature/Humidity Sensor
++ MAX17048 Battery Gauge
++ TP4056 + Protected 300–500mAh LiPo Power Path
 ```
 
 核心业务模块仍然可以复用。
