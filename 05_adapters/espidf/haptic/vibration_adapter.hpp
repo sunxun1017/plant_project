@@ -18,7 +18,6 @@ struct EspVibrationConfig {
 
 class EspVibrationAdapter final : public IHapticPort {
 public:
-    EspVibrationAdapter() noexcept;
     explicit EspVibrationAdapter(EspVibrationConfig config) noexcept;
     Status initialize();
     Status play(HapticPattern pattern, std::uint32_t execution_id) override;

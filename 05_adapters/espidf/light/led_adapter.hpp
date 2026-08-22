@@ -18,7 +18,6 @@ struct EspLedConfig {
 
 class EspLedAdapter final : public ILightPort {
 public:
-    EspLedAdapter() noexcept;
     explicit EspLedAdapter(EspLedConfig config) noexcept;
     Status initialize();
     Status play(LightPattern pattern, std::uint32_t execution_id) override;

@@ -1,21 +1,10 @@
 #include "05_adapters/espidf/power/esp_power_adapter.hpp"
 
-#include "06_bsp/plant_v1/plant_v1_board.hpp"
 #include "driver/gpio.h"
 #include "esp_pm.h"
 #include "esp_sleep.h"
 
 namespace plant {
-
-using V1Config = bsp::v1::BoardConfig;
-
-EspPowerAdapter::EspPowerAdapter() noexcept
-    : EspPowerAdapter(EspPowerConfig{
-          V1Config::Gpio::touch_input,
-          V1Config::Touch::active_high,
-          V1Config::Power::maximum_cpu_frequency_mhz,
-          V1Config::Power::minimum_cpu_frequency_mhz,
-      }) {}
 
 EspPowerAdapter::EspPowerAdapter(EspPowerConfig config) noexcept : config_(config) {}
 

@@ -2,9 +2,10 @@
 
 ## 1. 结论
 
-Plant V2 的 BSP 不是“内容太少”。当前 `plant_v2_board.hpp` 已有约 310 行，真正的问题是
-职责过宽：板级连接、电气限制、产品策略、协议身份和运行时默认值被放进了同一个
-`BoardConfig`。
+Plant V2 的 BSP 不是“内容太少”。传感器本身当然属于板级支持：型号和存在性、引脚、
+地址、电路、电气范围与器件采样时序都必须由 BSP 描述。此前真正的问题是职责过宽：
+板级事实、产品语义、协议身份和运行时默认值被放进了同一个 `BoardConfig`；本轮已将
+产品语义迁至 `10_config/plant_v2/plant_v2_product_config.hpp`。
 
 BSP 文件数量少本身没有问题。一块板使用一个集中式、只含编译期常量的头文件，反而容易
 审查和替换。判断边界是否正确，应看它回答的是不是下面这个问题：
@@ -30,7 +31,7 @@ BSP 文件数量少本身没有问题。一块板使用一个集中式、只含�
 
 本轮把 I²C 从 GPIO18/19 移到 GPIO2/9，并增加引脚冲突检查，是典型的 BSP 修复。
 
-## 3. 当前越过 BSP 边界的内容
+## 3. 已迁出 BSP 的产品语义
 
 | 当前分组 | 不应由 BSP 拥有的值 | 更合适的 Owner |
 | --- | --- | --- |
@@ -53,7 +54,7 @@ BSP 文件数量少本身没有问题。一块板使用一个集中式、只含�
 - `Touch::active_high` 和内部下拉属于 BSP；长按语义属于产品交互配置。
 - CPU 可用频率受芯片和板级电源约束；是否在某状态进入深睡眠属于产品策略。
 
-## 4. 已发现的具体漂移风险
+## 4. 仍需继续控制的漂移风险
 
 ### 4.1 构建配置与 BSP 重复
 
@@ -62,23 +63,22 @@ BSP 文件数量少本身没有问题。一块板使用一个集中式、只含�
 `CONFIG_BT_NIMBLE_MAX_CONNECTIONS` 决定。两份值没有编译期关联，后续修改一边可能造成
 文档、遥测或产品预期与实际控制器容量不一致。
 
-### 4.2 通用 Adapter 默认依赖 V1 BSP
+### 4.2 通用 Adapter 默认依赖 V1 BSP（已修复）
 
-多个 ESP-IDF Adapter 为提供默认构造函数，直接 include 或 alias
-`bsp::v1::BoardConfig`。V2 组合根虽然显式传入了配置，但通用 Adapter 本身仍带有 V1
-产品依赖，容易产生以下问题：
+BLE、触摸、电源、RGB 和振动 Adapter 曾因默认构造函数直接依赖
+`bsp::v1::BoardConfig`。本轮已删除这些默认依赖，V1/V2 组合根均显式构造窄配置，避免：
 
 - 单独复用 Adapter 时静默落回 V1 GPIO 或策略；
 - clangd 和依赖审查误以为通用 Adapter 必须依赖 V1；
 - 新产品忘记显式注入时，编译可以通过但硬件行为错误。
 
-目标状态应是：通用 Adapter 只接受自己的窄配置结构；V1/V2 组合根负责从各自 BSP 和产品
-配置构造这些结构。若要保留便利默认值，也应由 V1 产品包装器提供，而不是放在通用 Adapter。
+舵机 Adapter 分别是明确的 V1/V2 板型实现，仍可直接依赖对应 BSP；它们不是跨板通用
+Adapter。
 
-### 4.3 缺少独立产品配置层
+### 4.3 缺少独立产品配置层（已修复）
 
-仓库已有 `10_config` 的架构约定，但当前没有实际配置文件。产品默认值因此自然堆进
-`BoardConfig`。这不是 BSP 缺文件，而是配置 Owner 尚未落地。
+`10_config/plant_v2/plant_v2_product_config.hpp` 现已承接传感识别门限、成长节奏、交互、
+低功耗、产品身份和 BLE 运行策略。BSP 继续完整拥有传感器硬件支持。
 
 ## 5. 推荐的目标结构
 
@@ -94,7 +94,7 @@ BSP 文件数量少本身没有问题。一块板使用一个集中式、只含�
     MechanicalHardLimits
     PowerTopology
 
-10_config/plant_v2/product_defaults.hpp
+10_config/plant_v2/plant_v2_product_config.hpp
     AcousticDetectionConfig
     IlluminationDetectionConfig
     ClimateDetectionConfig
@@ -114,16 +114,14 @@ sdkconfig.defaults
 Protocol UUID 和版本也可以放在 `04_protocol` 的权威定义中，由 V1/V2 协议各自拥有，避免
 BSP 和工具重复维护。
 
-## 6. 建议迁移步骤
+## 6. 本轮迁移结果与后续步骤
 
-这项重构不应该和硬件功能修复混在一个提交中。建议分阶段：
+已完成产品配置文件、通用 Adapter 显式注入、组合根分离和 `BoardConfig` 策略字段清理；
+主机测试与 V1/V2 ESP-IDF 构建负责保护边界。后续仍要：
 
-1. 新建平台无关的 V2 产品默认配置，只移动值，不改行为。
-2. 为每个 Adapter 保留窄配置结构，删除对 V1 BSP 的默认依赖。
-3. 组合根显式完成 BSP → Adapter、Product defaults → Service 的注入。
-4. 把 NimBLE 容量等编译期值集中到 `sdkconfig.defaults`，增加 CMake/Kconfig 一致性检查。
-5. 主机快照测试确认迁移前后策略值一致，V1/V2 分别做新鲜 ESP-IDF 构建。
-6. 最后删除 `BoardConfig` 中已迁走的策略字段，并更新本文件。
+1. 把 UUID/协议版本进一步收敛到 Protocol 权威定义。
+2. 把 NimBLE 容量等编译期值与 `sdkconfig.defaults` 建立一致性检查。
+3. 最终样机标定后，只在 BSP 修改电气/器件事实，只在 ProductConfig 修改体验语义。
 
 ## 7. 审查准则
 

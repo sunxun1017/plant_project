@@ -1,29 +1,16 @@
 #include "05_adapters/espidf/haptic/vibration_adapter.hpp"
 
-#include "06_bsp/plant_v1/plant_v1_board.hpp"
 #include "driver/ledc.h"
 #include "esp_timer.h"
 
 namespace plant {
 namespace {
 
-using V1Config = bsp::v1::BoardConfig;
 constexpr ledc_mode_t kMode = LEDC_LOW_SPEED_MODE;
 constexpr ledc_timer_t kTimer = LEDC_TIMER_2;
 constexpr ledc_channel_t kChannel = LEDC_CHANNEL_4;
 
 }  // namespace
-
-EspVibrationAdapter::EspVibrationAdapter() noexcept
-    : EspVibrationAdapter(EspVibrationConfig{
-          V1Config::Gpio::vibration_pwm,
-          V1Config::Vibration::frequency_hz,
-          V1Config::Vibration::duty_resolution_bits,
-          V1Config::Vibration::soft_duty,
-          V1Config::Vibration::warning_duty,
-          V1Config::Vibration::maximum_continuous_time_ms,
-          V1Config::Vibration::active_high,
-      }) {}
 
 EspVibrationAdapter::EspVibrationAdapter(EspVibrationConfig config) noexcept
     : config_(config) {}

@@ -82,6 +82,9 @@ struct BoardConfig final {
         static constexpr std::uint16_t response_uuid = 0xFFF2;
         static constexpr std::uint16_t preferred_mtu = 517;
         static constexpr std::size_t receive_queue_depth = 4;
+        static constexpr std::uint16_t fast_advertising_interval_min_units = 160;
+        static constexpr std::uint16_t fast_advertising_interval_max_units = 240;
+        static constexpr std::uint32_t fast_advertising_duration_ms = 30000;
         static constexpr std::uint16_t advertising_interval_min_units = 800;
         static constexpr std::uint16_t advertising_interval_max_units = 1600;
     };
@@ -93,6 +96,9 @@ static_assert(BoardConfig::Servo::neutral_pulse_us < BoardConfig::Servo::maximum
 static_assert(BoardConfig::Servo::look_up_pulse_us <= BoardConfig::Servo::maximum_pulse_us);
 static_assert(BoardConfig::Led::maximum_duty <= 255);
 static_assert(BoardConfig::Vibration::soft_duty < BoardConfig::Vibration::warning_duty);
+static_assert(
+    BoardConfig::Ble::fast_advertising_interval_min_units <=
+    BoardConfig::Ble::fast_advertising_interval_max_units);
 static_assert(
     BoardConfig::Ble::advertising_interval_min_units <=
     BoardConfig::Ble::advertising_interval_max_units);

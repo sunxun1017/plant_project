@@ -35,7 +35,8 @@ public:
         ClimateService& climate,
         BatteryService& battery,
         GrowthService& growth,
-        LightArbitrationService& light) noexcept;
+        LightArbitrationService& light,
+        std::uint64_t actuator_recovery_us = 0) noexcept;
 
     Status tick(std::uint64_t now_us);
     Status handle_touch(TouchGesture gesture, std::uint64_t now_us);
@@ -52,7 +53,7 @@ public:
     [[nodiscard]] BatterySnapshot battery_snapshot() const noexcept;
     [[nodiscard]] GrowthSnapshot growth_snapshot() const noexcept;
     [[nodiscard]] bool boot_sensors_ready() const noexcept;
-    [[nodiscard]] bool boot_sensors_ok() const noexcept;
+    [[nodiscard]] bool boot_critical_sensors_ok() const noexcept;
 
 private:
     Status poll_motion(std::uint64_t now_us);
@@ -60,6 +61,7 @@ private:
     Status evaluate_growth(std::uint64_t now_us);
     Status enter_fault(Status cause);
     void update_sleep_sampling();
+    void submit_or_defer_environment_credit(GrowthSource source, std::uint64_t now_us);
     [[nodiscard]] std::uint32_t next_growth_execution_id() noexcept;
 
     PlantApplication& base_;
@@ -79,7 +81,10 @@ private:
     LightArbitrationService& light_;
     std::uint32_t growth_execution_id_{0};
     bool growth_motion_active_{false};
-    bool sensing_enabled_{true};
+    GrowthSource deferred_environment_credit_{GrowthSource::None};
+    std::uint64_t actuator_recovery_us_{0};
+    std::uint64_t actuator_interference_until_us_{0};
+    bool acoustic_sampling_enabled_{true};
     bool acoustic_seen_{false};
     bool illumination_seen_{false};
     bool climate_seen_{false};

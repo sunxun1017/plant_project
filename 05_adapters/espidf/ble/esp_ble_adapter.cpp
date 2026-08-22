@@ -1,6 +1,7 @@
 #include "05_adapters/espidf/ble/esp_ble_adapter.hpp"
 
 #include <cstring>
+#include <limits>
 
 #include "esp_log.h"
 #include "host/ble_att.h"
@@ -21,7 +22,6 @@
 namespace plant {
 namespace {
 
-using V1Config = bsp::v1::BoardConfig;
 constexpr char kTag[] = "plant_ble";
 ble_uuid16_t service_uuid = BLE_UUID16_INIT(0);
 ble_uuid16_t command_uuid = BLE_UUID16_INIT(0);
@@ -37,24 +37,20 @@ extern "C" void ble_store_config_init(void);
 EspBleAdapter* EspBleAdapter::instance_ = nullptr;
 std::uint16_t EspBleAdapter::response_value_handle_ = 0;
 
-EspBleAdapter::EspBleAdapter() noexcept
-    : EspBleAdapter(EspBleConfig{
-          V1Config::Product::device_name,
-          V1Config::Ble::service_uuid,
-          V1Config::Ble::command_uuid,
-          V1Config::Ble::response_uuid,
-          V1Config::Ble::preferred_mtu,
-          V1Config::Ble::receive_queue_depth,
-          V1Config::Ble::advertising_interval_min_units,
-          V1Config::Ble::advertising_interval_max_units,
-      }) {}
-
 EspBleAdapter::EspBleAdapter(EspBleConfig config) noexcept : config_(config) {}
 
 Status EspBleAdapter::initialize() {
     if (instance_ != nullptr || config_.device_name == nullptr ||
         config_.receive_queue_depth == 0 ||
-        config_.receive_queue_depth > kMaximumReceiveQueueDepth) {
+        config_.receive_queue_depth > kMaximumReceiveQueueDepth ||
+        config_.fast_advertising_interval_min_units == 0 ||
+        config_.fast_advertising_interval_min_units >
+            config_.fast_advertising_interval_max_units ||
+        config_.slow_advertising_interval_min_units == 0 ||
+        config_.slow_advertising_interval_min_units >
+            config_.slow_advertising_interval_max_units ||
+        config_.fast_advertising_duration_ms >
+            static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max())) {
         return Status::failure(ErrorCode::InvalidState);
     }
     queue_ = xQueueCreateStatic(
@@ -168,6 +164,22 @@ Status EspBleAdapter::forget_bonds() {
                                   : Status::failure(ErrorCode::StorageFailure);
 }
 
+Status EspBleAdapter::request_fast_advertising() {
+    if (connected_.load()) {
+        return Status::failure(ErrorCode::Busy);
+    }
+    if (ble_gap_adv_active() == 0) {
+        return start_advertising(AdvertisingMode::Fast);
+    }
+    // 停止广播会异步产生 ADV_COMPLETE；由该回调重启快速阶段，避免同时启动两次广播。
+    fast_restart_pending_.store(true);
+    if (ble_gap_adv_stop() != 0) {
+        fast_restart_pending_.store(false);
+        return Status::failure(ErrorCode::InternalFailure);
+    }
+    return Status::success();
+}
+
 int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
     auto* self = static_cast<EspBleAdapter*>(argument);
     switch (event->type) {
@@ -186,7 +198,7 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
             } else {
                 ESP_LOGW(kTag, "BLE connection attempt failed status=%d",
                          event->connect.status);
-                (void)self->start_advertising();
+                (void)self->start_advertising(AdvertisingMode::Fast);
             }
             return 0;
         case BLE_GAP_EVENT_DISCONNECT:
@@ -196,10 +208,13 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
             self->secure_.store(false);
             self->bonded_.store(false);
             self->connection_handle_.store(BLE_HS_CONN_HANDLE_NONE);
-            (void)self->start_advertising();
+            (void)self->start_advertising(AdvertisingMode::Fast);
             return 0;
         case BLE_GAP_EVENT_ADV_COMPLETE:
-            (void)self->start_advertising();
+            (void)self->start_advertising(
+                self->fast_restart_pending_.exchange(false)
+                    ? AdvertisingMode::Fast
+                    : AdvertisingMode::Slow);
             return 0;
         case BLE_GAP_EVENT_ENC_CHANGE: {
             ESP_LOGI(kTag, "BLE encryption change handle=%u status=%d",
@@ -263,7 +278,7 @@ void EspBleAdapter::on_sync() {
         ESP_LOGE(kTag, "failed to establish BLE identity");
         return;
     }
-    (void)instance_->start_advertising();
+    (void)instance_->start_advertising(AdvertisingMode::Fast);
 }
 
 void EspBleAdapter::on_reset(int reason) {
@@ -280,7 +295,7 @@ void EspBleAdapter::host_task(void*) {
     nimble_port_freertos_deinit();
 }
 
-Status EspBleAdapter::start_advertising() {
+Status EspBleAdapter::start_advertising(AdvertisingMode mode) {
     std::uint8_t address_type = 0;
     if (ble_hs_id_infer_auto(0, &address_type) != 0) {
         return Status::failure(ErrorCode::InternalFailure);
@@ -302,12 +317,19 @@ Status EspBleAdapter::start_advertising() {
     ble_gap_adv_params parameters{};
     parameters.conn_mode = BLE_GAP_CONN_MODE_UND;
     parameters.disc_mode = BLE_GAP_DISC_MODE_GEN;
-    parameters.itvl_min = config_.advertising_interval_min_units;
-    parameters.itvl_max = config_.advertising_interval_max_units;
+    const bool fast = mode == AdvertisingMode::Fast;
+    parameters.itvl_min = fast ? config_.fast_advertising_interval_min_units
+                               : config_.slow_advertising_interval_min_units;
+    parameters.itvl_max = fast ? config_.fast_advertising_interval_max_units
+                               : config_.slow_advertising_interval_max_units;
+    const std::int32_t duration_ms =
+        fast && config_.fast_advertising_duration_ms != 0
+            ? static_cast<std::int32_t>(config_.fast_advertising_duration_ms)
+            : BLE_HS_FOREVER;
     return ble_gap_adv_start(
                address_type,
                nullptr,
-               BLE_HS_FOREVER,
+               duration_ms,
                &parameters,
                gap_event,
                this) == 0

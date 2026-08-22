@@ -27,11 +27,51 @@ constexpr char kTag[] = "plant_v1";
 constexpr std::uint64_t kBootConfirmationDelayUs = 10ULL * 1000ULL * 1000ULL;
 
 EspServoAdapter motion; // 舵机运动适配器。
-EspLedAdapter light; // RGB 灯光适配器。
-EspVibrationAdapter haptic; // 振动反馈适配器。
-EspTouchAdapter touch; // 触摸输入适配器。
-EspBleAdapter ble; // BLE 传输适配器。
-EspPowerAdapter power_port; // ESP-IDF 功耗控制适配器。
+EspLedAdapter light{EspLedConfig{
+    Config::Gpio::led_red_pwm,
+    Config::Gpio::led_green_pwm,
+    Config::Gpio::led_blue_pwm,
+    Config::Led::frequency_hz,
+    Config::Led::duty_resolution_bits,
+    Config::Led::maximum_duty,
+    Config::Led::active_high,
+}}; // RGB 灯光适配器。
+EspVibrationAdapter haptic{EspVibrationConfig{
+    Config::Gpio::vibration_pwm,
+    Config::Vibration::frequency_hz,
+    Config::Vibration::duty_resolution_bits,
+    Config::Vibration::soft_duty,
+    Config::Vibration::warning_duty,
+    Config::Vibration::maximum_continuous_time_ms,
+    Config::Vibration::active_high,
+}}; // 振动反馈适配器。
+EspTouchAdapter touch{EspTouchConfig{
+    Config::Gpio::touch_input,
+    Config::Touch::active_high,
+    Config::Touch::debounce_ms,
+    Config::Touch::long_press_ms,
+    0,
+    Config::Touch::enable_internal_pull_down,
+}}; // 触摸输入适配器。
+EspBleAdapter ble{EspBleConfig{
+    Config::Product::device_name,
+    Config::Ble::service_uuid,
+    Config::Ble::command_uuid,
+    Config::Ble::response_uuid,
+    Config::Ble::preferred_mtu,
+    Config::Ble::receive_queue_depth,
+    Config::Ble::fast_advertising_interval_min_units,
+    Config::Ble::fast_advertising_interval_max_units,
+    Config::Ble::fast_advertising_duration_ms,
+    Config::Ble::advertising_interval_min_units,
+    Config::Ble::advertising_interval_max_units,
+}}; // BLE 传输适配器；启动或断连后先快速广播，再转为低占空比广播。
+EspPowerAdapter power_port{EspPowerConfig{
+    Config::Gpio::touch_input,
+    Config::Touch::active_high,
+    Config::Power::maximum_cpu_frequency_mhz,
+    Config::Power::minimum_cpu_frequency_mhz,
+}}; // ESP-IDF 功耗控制适配器。
 EspOtaAdapter ota_port; // ESP-IDF OTA Flash 适配器。
 
 BehaviorService behavior{motion, light, haptic};

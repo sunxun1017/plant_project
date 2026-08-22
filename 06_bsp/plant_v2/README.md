@@ -8,13 +8,14 @@
 -->
 # Plant V2 BSP
 
-`plant_v2_board.hpp` 是 V2 板级身份、GPIO、ADC 通道、电气极性、安全范围和默认标定值
-的唯一来源。当前数值是交叉编译基线，不是上板结论。
+`plant_v2_board.hpp` 是 V2 板级硬件支持的唯一来源：传感器/执行器型号和存在性、GPIO、
+ADC 通道、I²C 地址、采样电路、电气极性、器件时序、机械安全范围和默认标定值都属于
+BSP。当前数值是交叉编译基线，不是上板结论。
 
-当前头文件还临时承载了一部分产品策略默认值；这不代表这些策略属于 BSP。哪些字段应
-迁移到产品配置、Protocol 或 sdkconfig，见
-[`v2_bsp_boundary_review.md`](../../00_docs/architecture/v2_bsp_boundary_review.md)。后续迁移应
-保持行为不变，并由 V1/V2 双目标构建和主机快照测试保护。
+“多亮算晒太阳、讲话多久算持续、什么温湿度算适宜、多久促进一次”等用户体验语义位于
+`10_config/plant_v2/plant_v2_product_config.hpp`，由组合根注入 Service；这不等于把传感器
+支持移出 BSP。完整判断方法见
+[`v2_bsp_boundary_review.md`](../../00_docs/architecture/v2_bsp_boundary_review.md)。
 
 原理图或样机数据变化时只修改该文件，并同步执行
 [`board_bringup_v2.md`](../../00_docs/testing/board_bringup_v2.md)。GPIO18/19 固定保留给原生

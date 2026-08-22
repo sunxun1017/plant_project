@@ -1,5 +1,7 @@
 #include "07_products/plant_v2/app/plant_v2_application.hpp"
 
+#include <limits>
+
 namespace plant {
 
 PlantV2Application::PlantV2Application(
@@ -17,7 +19,8 @@ PlantV2Application::PlantV2Application(
     ClimateService& climate,
     BatteryService& battery,
     GrowthService& growth,
-    LightArbitrationService& light) noexcept
+    LightArbitrationService& light,
+    std::uint64_t actuator_recovery_us) noexcept
     : base_(base),
       lifecycle_(lifecycle),
       behavior_(behavior),
@@ -32,7 +35,8 @@ PlantV2Application::PlantV2Application(
       climate_(climate),
       battery_(battery),
       growth_(growth),
-      light_(light) {}
+      light_(light),
+      actuator_recovery_us_(actuator_recovery_us) {}
 
 Status PlantV2Application::tick(std::uint64_t now_us) {
     const Status base_status = base_.tick(now_us);
@@ -53,8 +57,17 @@ Status PlantV2Application::tick(std::uint64_t now_us) {
         }
     }
 
-    const bool actuator_interference = motion_.position_snapshot().moving ||
-                                       behavior.state == BehaviorRunState::Running;
+    bool actuator_interference = motion_.position_snapshot().moving ||
+                                 behavior.state == BehaviorRunState::Running;
+    if (actuator_interference) {
+        const std::uint64_t maximum = std::numeric_limits<std::uint64_t>::max();
+        actuator_interference_until_us_ =
+            actuator_recovery_us_ > maximum - now_us
+                ? maximum
+                : now_us + actuator_recovery_us_;
+    } else {
+        actuator_interference = now_us < actuator_interference_until_us_;
+    }
     const Status sensor_status = poll_sensors(now_us, actuator_interference);
     if (!sensor_status.ok()) {
         return sensor_status;
@@ -147,13 +160,10 @@ bool PlantV2Application::boot_sensors_ready() const noexcept {
     return acoustic_seen_ && illumination_seen_ && climate_seen_ && battery_seen_;
 }
 
-bool PlantV2Application::boot_sensors_ok() const noexcept {
-    return boot_sensors_ready() &&
-           motion_.position_snapshot().feedback == PositionFeedbackState::Valid &&
-           acoustic_.snapshot().state != AcousticState::SensorFault &&
-           illumination_.snapshot().state != IlluminationState::SensorFault &&
-           climate_.snapshot().state != ClimateState::SensorFault &&
-           battery_.snapshot().valid;
+bool PlantV2Application::boot_critical_sensors_ok() const noexcept {
+    // 舵机位置反馈参与机械闭环，是启动安全门；其余环境传感器故障按能力降级，
+    // 仍通过各自快照和 BLE active_fault 上报，不能拖垮绑定、OTA 和基础交互。
+    return motion_.position_snapshot().feedback == PositionFeedbackState::Valid;
 }
 
 Status PlantV2Application::poll_motion(std::uint64_t now_us) {
@@ -181,31 +191,31 @@ Status PlantV2Application::poll_motion(std::uint64_t now_us) {
 Status PlantV2Application::poll_sensors(
     std::uint64_t now_us,
     bool actuator_interference) {
-    if (!sensing_enabled_) {
-        return Status::success();
-    }
-
-    AcousticSample acoustic_sample{};
     bool available = false;
-    Status status = acoustic_port_.poll(now_us, acoustic_sample, available);
-    if (!status.ok()) {
-        available = true;
-        acoustic_sample = AcousticSample{};
-    }
-    if (available) {
-        acoustic_seen_ = true;
-        if (acoustic_.process(now_us, acoustic_sample, actuator_interference)) {
-            (void)growth_.submit(GrowthSource::SustainedSpeech, now_us);
+    Status status{};
+    const bool sleeping = lifecycle_.snapshot().state == DeviceState::Sleeping;
+    if (acoustic_sampling_enabled_) {
+        AcousticSample acoustic_sample{};
+        status = acoustic_port_.poll(now_us, acoustic_sample, available);
+        if (!status.ok()) {
+            available = true;
+            acoustic_sample = AcousticSample{};
         }
-        const AcousticSnapshot snapshot = acoustic_.snapshot();
-        if (snapshot.state == AcousticState::Speaking ||
-            snapshot.state == AcousticState::SustainedSpeech) {
-            (void)light_.request(
-                LightRequestSource::Speech,
-                LightPattern::ListeningBreath,
-                snapshot.volume_level,
-                now_us,
-                150ULL * 1000ULL);
+        if (available) {
+            acoustic_seen_ = true;
+            if (acoustic_.process(now_us, acoustic_sample, actuator_interference)) {
+                (void)growth_.submit(GrowthSource::SustainedSpeech, now_us);
+            }
+            const AcousticSnapshot snapshot = acoustic_.snapshot();
+            if (snapshot.state == AcousticState::Speaking ||
+                snapshot.state == AcousticState::SustainedSpeech) {
+                (void)light_.request(
+                    LightRequestSource::Speech,
+                    LightPattern::ListeningBreath,
+                    snapshot.volume_level,
+                    now_us,
+                    150ULL * 1000ULL);
+            }
         }
     }
 
@@ -220,10 +230,10 @@ Status PlantV2Application::poll_sensors(
         illumination_seen_ = true;
         const bool rgb_mask = light_.interferes_with_illumination();
         if (illumination_.process(now_us, illumination_sample, rgb_mask)) {
-            (void)growth_.submit(GrowthSource::BrightExposure, now_us);
+            submit_or_defer_environment_credit(GrowthSource::BrightExposure, now_us);
         }
         const IlluminationSnapshot snapshot = illumination_.snapshot();
-        if (snapshot.state == IlluminationState::BrightExposure) {
+        if (!sleeping && snapshot.state == IlluminationState::BrightExposure) {
             (void)light_.request(
                 LightRequestSource::Sunlight,
                 LightPattern::SunGlow,
@@ -243,9 +253,9 @@ Status PlantV2Application::poll_sensors(
     if (available) {
         climate_seen_ = true;
         if (climate_.process(now_us, climate_sample)) {
-            (void)growth_.submit(GrowthSource::SuitableClimate, now_us);
+            submit_or_defer_environment_credit(GrowthSource::SuitableClimate, now_us);
         }
-        if (climate_.snapshot().state == ClimateState::Suitable) {
+        if (!sleeping && climate_.snapshot().state == ClimateState::Suitable) {
             (void)light_.request(
                 LightRequestSource::Climate,
                 LightPattern::ComfortGlow,
@@ -274,6 +284,13 @@ Status PlantV2Application::evaluate_growth(std::uint64_t now_us) {
         return Status::success();
     }
     const LifecycleSnapshot lifecycle = lifecycle_.snapshot();
+    if (lifecycle.state != DeviceState::Sleeping &&
+        deferred_environment_credit_ != GrowthSource::None) {
+        const Status deferred_status = growth_.submit(deferred_environment_credit_, now_us);
+        if (deferred_status.ok()) {
+            deferred_environment_credit_ = GrowthSource::None;
+        }
+    }
     const bool foreground_available = lifecycle.state == DeviceState::Idle &&
                                       behavior_.snapshot().state == BehaviorRunState::Idle &&
                                       ota_.snapshot().state == OtaState::Idle;
@@ -323,21 +340,31 @@ Status PlantV2Application::enter_fault(Status cause) {
 
 void PlantV2Application::update_sleep_sampling() {
     const bool should_enable = lifecycle_.snapshot().state != DeviceState::Sleeping;
-    if (should_enable == sensing_enabled_) {
+    if (should_enable == acoustic_sampling_enabled_) {
         return;
     }
-    sensing_enabled_ = should_enable;
+    acoustic_sampling_enabled_ = should_enable;
     acoustic_.set_enabled(should_enable);
     (void)acoustic_port_.set_enabled(should_enable);
-    (void)climate_port_.set_enabled(should_enable);
     if (!should_enable) {
-        illumination_.reset_exposure();
-        climate_.reset_suitable_time();
-        growth_.clear_runtime_state();
+        // 浅睡关闭麦克风以控制功耗和隐私；光照、温湿度和电量仍低频采样，
+        // 环境奖励先合并为一个待处理事件，唤醒后再驱动舵机和灯光。
         light_.clear(LightRequestSource::Speech);
         light_.clear(LightRequestSource::Sunlight);
         light_.clear(LightRequestSource::Climate);
     }
+}
+
+void PlantV2Application::submit_or_defer_environment_credit(
+    GrowthSource source,
+    std::uint64_t now_us) {
+    if (lifecycle_.snapshot().state == DeviceState::Sleeping) {
+        if (deferred_environment_credit_ == GrowthSource::None) {
+            deferred_environment_credit_ = source;
+        }
+        return;
+    }
+    (void)growth_.submit(source, now_us);
 }
 
 std::uint32_t PlantV2Application::next_growth_execution_id() noexcept {

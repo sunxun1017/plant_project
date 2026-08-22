@@ -3,14 +3,12 @@
 #include <algorithm>
 
 #include "01_core/domain/sensing.hpp"
-#include "06_bsp/plant_v1/plant_v1_board.hpp"
 #include "driver/ledc.h"
 #include "esp_timer.h"
 
 namespace plant {
 namespace {
 
-using V1Config = bsp::v1::BoardConfig;
 constexpr ledc_mode_t kMode = LEDC_LOW_SPEED_MODE;
 constexpr ledc_timer_t kTimer = LEDC_TIMER_1;
 constexpr ledc_channel_t kRed = LEDC_CHANNEL_1;
@@ -28,17 +26,6 @@ std::uint8_t triangle(
 }
 
 }  // namespace
-
-EspLedAdapter::EspLedAdapter() noexcept
-    : EspLedAdapter(EspLedConfig{
-          V1Config::Gpio::led_red_pwm,
-          V1Config::Gpio::led_green_pwm,
-          V1Config::Gpio::led_blue_pwm,
-          V1Config::Led::frequency_hz,
-          V1Config::Led::duty_resolution_bits,
-          V1Config::Led::maximum_duty,
-          V1Config::Led::active_high,
-      }) {}
 
 EspLedAdapter::EspLedAdapter(EspLedConfig config) noexcept : config_(config) {}
 

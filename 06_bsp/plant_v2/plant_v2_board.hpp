@@ -18,7 +18,7 @@ constexpr bool pins_are_unique(const std::array<int, Size>& pins) {
     return true;
 }
 
-// V2 原理图冻结前的集中式板级基线。GPIO、ADC 端点和阈值都必须经过
+// V2 原理图冻结前的集中式板级基线。GPIO、ADC 电气端点和器件时序都必须经过
 // 00_docs/testing/board_bringup_v2.md 的样机流程标定后才能用于量产。
 struct BoardConfig final {
     struct Hardware final {
@@ -127,14 +127,6 @@ struct BoardConfig final {
         static constexpr int valid_raw_maximum = 4085;
         static constexpr std::uint32_t sample_period_ms = 20;
         static constexpr std::uint32_t front_end_settle_ms = 100;
-        static constexpr std::uint16_t initial_noise_floor = 80;
-        static constexpr std::uint16_t speech_start_margin = 120;
-        static constexpr std::uint16_t speech_stop_margin = 70;
-        static constexpr std::uint32_t minimum_speech_ms = 300;
-        static constexpr std::uint32_t speech_end_hold_ms = 600;
-        static constexpr std::uint32_t sustained_window_ms = 30000;
-        static constexpr std::uint32_t sustained_required_ms = 20000;
-        static constexpr std::uint32_t actuator_recovery_ms = 800;
     };
 
     struct Illumination final {
@@ -145,12 +137,6 @@ struct BoardConfig final {
         static constexpr int valid_raw_maximum = 4085;
         static constexpr bool larger_raw_means_brighter = true;
         static constexpr std::uint32_t sample_period_ms = 100;
-        static constexpr std::uint16_t dark_threshold = 180;
-        static constexpr std::uint16_t bright_enter_threshold = 700;
-        static constexpr std::uint16_t bright_exit_threshold = 600;
-        static constexpr std::uint32_t bright_confirm_ms = 5000;
-        static constexpr std::uint32_t bright_exit_hold_ms = 2000;
-        static constexpr std::uint32_t exposure_credit_interval_ms = 5U * 60U * 1000U;
     };
 
     struct Climate final {
@@ -162,13 +148,6 @@ struct BoardConfig final {
         static constexpr std::uint32_t transfer_timeout_ms = 20;
         static constexpr std::uint8_t maximum_retries = 3;
         static constexpr bool crc_required = true;
-        static constexpr std::int16_t suitable_min_temperature_centi_c = 1800;
-        static constexpr std::int16_t suitable_max_temperature_centi_c = 3000;
-        static constexpr std::uint16_t suitable_min_humidity_tenths_percent = 300;
-        static constexpr std::uint16_t suitable_max_humidity_tenths_percent = 750;
-        static constexpr std::int16_t temperature_hysteresis_centi_c = 50;
-        static constexpr std::uint16_t humidity_hysteresis_tenths_percent = 20;
-        static constexpr std::uint32_t suitable_credit_interval_ms = 10U * 60U * 1000U;
     };
 
     struct Battery final {
@@ -177,8 +156,6 @@ struct BoardConfig final {
         static constexpr std::uint8_t address = 0x36;
         static constexpr std::uint32_t sample_period_ms = 5000;
         static constexpr std::uint32_t transfer_timeout_ms = 20;
-        static constexpr std::uint16_t low_level_per_mille = 200;
-        static constexpr std::uint16_t critical_level_per_mille = 80;
         static constexpr std::uint16_t nominal_voltage_mv = 3700;
         static constexpr std::uint16_t minimum_capacity_mah = 300;
         static constexpr std::uint16_t maximum_capacity_mah = 500;
@@ -221,60 +198,14 @@ struct BoardConfig final {
 
     struct Touch final {
         static constexpr bool active_high = true;
-        static constexpr std::uint32_t debounce_ms = 80;
-        static constexpr std::uint32_t long_press_ms = 2000;
-        static constexpr std::uint32_t factory_reset_hold_ms = 10000;
         // TTP223 默认持续高电平表示触摸，输出为推挽；弱下拉保证传感器断开时不会把悬空
         // 输入误判为长按恢复。灵敏度电容由样机和外壳厚度确定。
         static constexpr bool enable_internal_pull_down = true;
     };
 
-    struct Growth final {
-        static constexpr std::uint16_t step = 50;
-        static constexpr std::uint16_t maximum_position = Position::safe_maximum;
-        static constexpr std::uint16_t limit_tolerance = Position::tolerance;
-        static constexpr std::uint32_t pending_expiry_ms = 30000;
-        static constexpr std::uint32_t touch_cooldown_ms = 30000;
-        static constexpr std::uint32_t speech_cooldown_ms = 2U * 60U * 1000U;
-        static constexpr std::uint32_t sunlight_cooldown_ms = 5U * 60U * 1000U;
-        static constexpr std::uint32_t climate_cooldown_ms = 10U * 60U * 1000U;
-    };
-
-    struct Interaction final {
-        static constexpr std::uint32_t automatic_sleep_ms = 5U * 60U * 1000U;
-        static constexpr std::uint32_t system_tick_ms = 20;
-    };
-
     struct Power final {
-        static constexpr bool deep_sleep_enabled = true;
-        static constexpr std::uint32_t deep_sleep_delay_ms = 30U * 60U * 1000U;
-        static constexpr std::uint64_t timer_wakeup_us = 0;
         static constexpr int maximum_cpu_frequency_mhz = 160;
         static constexpr int minimum_cpu_frequency_mhz = 40;
-    };
-
-    struct Product final {
-        static constexpr char device_name[] = "Plant-V2-C3";
-        static constexpr std::uint32_t product_id = 0x504C414EU;  // "PLAN"
-        static constexpr std::uint32_t hardware_revision = 2;
-        static constexpr std::uint32_t firmware_version = 0x00020000U;
-        static constexpr std::size_t ota_chunk_size = 496;
-    };
-
-    struct Ble final {
-        static constexpr std::uint16_t service_uuid = 0xFFF0;
-        static constexpr std::uint16_t command_uuid = 0xFFF1;
-        static constexpr std::uint16_t response_uuid = 0xFFF2;
-        static constexpr std::uint16_t preferred_mtu = 517;
-        static constexpr std::size_t receive_queue_depth = 4;
-        static constexpr std::uint16_t advertising_interval_min_units = 800;
-        static constexpr std::uint16_t advertising_interval_max_units = 1600;
-        static constexpr std::uint8_t maximum_bonds = 3;
-        static constexpr std::uint8_t maximum_connections = 1;
-        static constexpr bool secure_connections_only = true;
-        static constexpr bool bonding_required = true;
-        // 无显示和键盘，当前只能使用 LE Secure Connections Just Works，不具备 MITM 认证。
-        static constexpr bool mitm_protection = false;
     };
 };
 
@@ -291,20 +222,9 @@ static_assert(BoardConfig::Position::neutral < BoardConfig::Position::safe_maxim
 static_assert(BoardConfig::Position::sleep >= BoardConfig::Position::safe_minimum);
 static_assert(BoardConfig::Position::look_up <= BoardConfig::Position::safe_maximum);
 static_assert(
-    BoardConfig::Illumination::bright_exit_threshold <
-    BoardConfig::Illumination::bright_enter_threshold);
-static_assert(
-    BoardConfig::Climate::suitable_min_temperature_centi_c <
-    BoardConfig::Climate::suitable_max_temperature_centi_c);
-static_assert(
-    BoardConfig::Climate::suitable_min_humidity_tenths_percent <
-    BoardConfig::Climate::suitable_max_humidity_tenths_percent);
-static_assert(
     BoardConfig::PowerSource::minimum_capacity_mah <=
     BoardConfig::PowerSource::maximum_capacity_mah);
 static_assert(
     BoardConfig::PowerSource::default_charge_current_ma <=
     BoardConfig::PowerSource::minimum_capacity_mah);
-static_assert(BoardConfig::Touch::factory_reset_hold_ms > BoardConfig::Touch::long_press_ms);
-
 }  // namespace plant::bsp::v2

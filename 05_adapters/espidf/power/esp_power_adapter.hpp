@@ -14,7 +14,6 @@ struct EspPowerConfig {
 
 class EspPowerAdapter final : public IPowerPort {
 public:
-    EspPowerAdapter() noexcept;
     explicit EspPowerAdapter(EspPowerConfig config) noexcept;
     Status initialize();
     Status enter_light_sleep() override;

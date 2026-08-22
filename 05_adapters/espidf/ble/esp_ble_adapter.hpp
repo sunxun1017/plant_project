@@ -6,7 +6,6 @@
 #include <cstdint>
 
 #include "02_ports/ble/ble_port.hpp"
-#include "06_bsp/plant_v1/plant_v1_board.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
@@ -23,13 +22,15 @@ struct EspBleConfig {
     std::uint16_t response_uuid;
     std::uint16_t preferred_mtu;
     std::size_t receive_queue_depth;
-    std::uint16_t advertising_interval_min_units;
-    std::uint16_t advertising_interval_max_units;
+    std::uint16_t fast_advertising_interval_min_units;
+    std::uint16_t fast_advertising_interval_max_units;
+    std::uint32_t fast_advertising_duration_ms;
+    std::uint16_t slow_advertising_interval_min_units;
+    std::uint16_t slow_advertising_interval_max_units;
 };
 
 class EspBleAdapter final : public IBlePort {
 public:
-    EspBleAdapter() noexcept;
     explicit EspBleAdapter(EspBleConfig config) noexcept;
     Status initialize() override;
     bool receive(BleFrame& frame) override;
@@ -38,6 +39,7 @@ public:
     [[nodiscard]] bool secure() const override;
     [[nodiscard]] bool bonded() const override;
     Status forget_bonds() override;
+    Status request_fast_advertising();
 
     static int gap_event(ble_gap_event* event, void* argument);
     static int gatt_access(
@@ -57,7 +59,9 @@ private:
         std::array<std::uint8_t, kMaximumBleFrameSize> data;
     };
 
-    Status start_advertising();
+    enum class AdvertisingMode : std::uint8_t { Fast, Slow };
+
+    Status start_advertising(AdvertisingMode mode);
     bool enqueue(const std::uint8_t* data, std::size_t size);
 
     static EspBleAdapter* instance_;
@@ -72,6 +76,7 @@ private:
     std::atomic<bool> connected_{false};
     std::atomic<bool> secure_{false};
     std::atomic<bool> bonded_{false};
+    std::atomic<bool> fast_restart_pending_{false};
     std::atomic<std::uint16_t> connection_handle_{0xFFFF};
 };
 

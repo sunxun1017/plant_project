@@ -19,6 +19,7 @@
 #include "06_bsp/plant_v2/plant_v2_board.hpp"
 #include "07_products/plant_v1/app/plant_application.hpp"
 #include "07_products/plant_v2/app/plant_v2_application.hpp"
+#include "10_config/plant_v2/plant_v2_product_config.hpp"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -28,7 +29,8 @@
 namespace plant::product::v2 {
 namespace {
 
-using Config = bsp::v2::BoardConfig;
+using Board = bsp::v2::BoardConfig;
+using Product = config::v2::ProductConfig;
 constexpr char kTag[] = "plant_v2";
 constexpr std::uint64_t kBootSensorTimeoutUs = 5ULL * 1000ULL * 1000ULL;
 constexpr std::uint64_t kBootConfirmationDelayUs = 10ULL * 1000ULL * 1000ULL;
@@ -37,47 +39,50 @@ V2AdcSampler adc;
 V2I2cBus i2c;
 FeedbackServoAdapter motion{adc};
 EspLedAdapter led_output{EspLedConfig{
-    Config::Gpio::led_red_pwm,
-    Config::Gpio::led_green_pwm,
-    Config::Gpio::led_blue_pwm,
-    Config::Led::frequency_hz,
-    Config::Led::duty_resolution_bits,
-    Config::Led::maximum_duty,
-    Config::Led::active_high,
+    Board::Gpio::led_red_pwm,
+    Board::Gpio::led_green_pwm,
+    Board::Gpio::led_blue_pwm,
+    Board::Led::frequency_hz,
+    Board::Led::duty_resolution_bits,
+    Board::Led::maximum_duty,
+    Board::Led::active_high,
 }};
 LightArbitrationService light{led_output};
 EspVibrationAdapter haptic{EspVibrationConfig{
-    Config::Gpio::vibration_pwm,
-    Config::Vibration::frequency_hz,
-    Config::Vibration::duty_resolution_bits,
-    Config::Vibration::soft_duty,
-    Config::Vibration::warning_duty,
-    Config::Vibration::maximum_continuous_time_ms,
-    Config::Vibration::active_high,
+    Board::Gpio::vibration_pwm,
+    Board::Vibration::frequency_hz,
+    Board::Vibration::duty_resolution_bits,
+    Board::Vibration::soft_duty,
+    Board::Vibration::warning_duty,
+    Board::Vibration::maximum_continuous_time_ms,
+    Board::Vibration::active_high,
 }};
 EspTouchAdapter touch{EspTouchConfig{
-    Config::Gpio::touch_input,
-    Config::Touch::active_high,
-    Config::Touch::debounce_ms,
-    Config::Touch::long_press_ms,
-    Config::Touch::factory_reset_hold_ms,
-    Config::Touch::enable_internal_pull_down,
+    Board::Gpio::touch_input,
+    Board::Touch::active_high,
+    Product::Touch::debounce_ms,
+    Product::Touch::long_press_ms,
+    Product::Touch::factory_reset_hold_ms,
+    Board::Touch::enable_internal_pull_down,
 }};
 EspBleAdapter ble{EspBleConfig{
-    Config::Product::device_name,
-    Config::Ble::service_uuid,
-    Config::Ble::command_uuid,
-    Config::Ble::response_uuid,
-    Config::Ble::preferred_mtu,
-    Config::Ble::receive_queue_depth,
-    Config::Ble::advertising_interval_min_units,
-    Config::Ble::advertising_interval_max_units,
+    Product::Product::device_name,
+    Product::Ble::service_uuid,
+    Product::Ble::command_uuid,
+    Product::Ble::response_uuid,
+    Product::Ble::preferred_mtu,
+    Product::Ble::receive_queue_depth,
+    Product::Ble::fast_advertising_interval_min_units,
+    Product::Ble::fast_advertising_interval_max_units,
+    Product::Ble::fast_advertising_duration_ms,
+    Product::Ble::slow_advertising_interval_min_units,
+    Product::Ble::slow_advertising_interval_max_units,
 }};
 EspPowerAdapter power_port{EspPowerConfig{
-    Config::Gpio::touch_input,
-    Config::Touch::active_high,
-    Config::Power::maximum_cpu_frequency_mhz,
-    Config::Power::minimum_cpu_frequency_mhz,
+    Board::Gpio::touch_input,
+    Board::Touch::active_high,
+    Board::Power::maximum_cpu_frequency_mhz,
+    Board::Power::minimum_cpu_frequency_mhz,
 }};
 EspOtaAdapter ota_port;
 V2AcousticAdapter acoustic_port{adc};
@@ -91,60 +96,60 @@ PowerService power{
     lifecycle,
     power_port,
     LowPowerConfig{
-        Config::Power::deep_sleep_enabled,
-        Config::Power::deep_sleep_delay_ms,
-        Config::Power::timer_wakeup_us,
+        Product::Power::deep_sleep_enabled,
+        Product::Power::deep_sleep_delay_ms,
+        Product::Power::timer_wakeup_us,
     }};
 OtaService ota{
     lifecycle,
     ota_port,
     OtaProductIdentity{
-        Config::Product::product_id,
-        Config::Product::hardware_revision,
-        Config::Product::firmware_version,
+        Product::Product::product_id,
+        Product::Product::hardware_revision,
+        Product::Product::firmware_version,
     }};
 PlantApplication base_application{behavior, lifecycle, power, ota};
 AcousticService acoustic{AcousticDetectionConfig{
-    Config::Microphone::initial_noise_floor,
-    Config::Microphone::speech_start_margin,
-    Config::Microphone::speech_stop_margin,
-    Config::Microphone::minimum_speech_ms * 1000ULL,
-    Config::Microphone::speech_end_hold_ms * 1000ULL,
-    Config::Microphone::sustained_window_ms * 1000ULL,
-    Config::Microphone::sustained_required_ms * 1000ULL,
+    Product::Acoustic::initial_noise_floor,
+    Product::Acoustic::speech_start_margin,
+    Product::Acoustic::speech_stop_margin,
+    Product::Acoustic::minimum_speech_ms * 1000ULL,
+    Product::Acoustic::speech_end_hold_ms * 1000ULL,
+    Product::Acoustic::sustained_window_ms * 1000ULL,
+    Product::Acoustic::sustained_required_ms * 1000ULL,
 }};
 IlluminationService illumination{IlluminationDetectionConfig{
-    Config::Illumination::dark_threshold,
-    Config::Illumination::bright_enter_threshold,
-    Config::Illumination::bright_exit_threshold,
-    Config::Illumination::bright_confirm_ms * 1000ULL,
-    Config::Illumination::bright_exit_hold_ms * 1000ULL,
-    Config::Illumination::exposure_credit_interval_ms * 1000ULL,
+    Product::Illumination::dark_threshold,
+    Product::Illumination::bright_enter_threshold,
+    Product::Illumination::bright_exit_threshold,
+    Product::Illumination::bright_confirm_ms * 1000ULL,
+    Product::Illumination::bright_exit_hold_ms * 1000ULL,
+    Product::Illumination::exposure_credit_interval_ms * 1000ULL,
 }};
 ClimateService climate{ClimateDetectionConfig{
-    Config::Climate::suitable_min_temperature_centi_c,
-    Config::Climate::suitable_max_temperature_centi_c,
-    Config::Climate::suitable_min_humidity_tenths_percent,
-    Config::Climate::suitable_max_humidity_tenths_percent,
-    Config::Climate::temperature_hysteresis_centi_c,
-    Config::Climate::humidity_hysteresis_tenths_percent,
-    Config::Climate::suitable_credit_interval_ms * 1000ULL,
+    Product::Climate::suitable_min_temperature_centi_c,
+    Product::Climate::suitable_max_temperature_centi_c,
+    Product::Climate::suitable_min_humidity_tenths_percent,
+    Product::Climate::suitable_max_humidity_tenths_percent,
+    Product::Climate::temperature_hysteresis_centi_c,
+    Product::Climate::humidity_hysteresis_tenths_percent,
+    Product::Climate::suitable_credit_interval_ms * 1000ULL,
 }};
 BatteryService battery{
-    Config::Battery::low_level_per_mille,
-    Config::Battery::critical_level_per_mille,
+    Product::Battery::low_level_per_mille,
+    Product::Battery::critical_level_per_mille,
 };
 GrowthService growth{GrowthConfig{
-    Config::Growth::step,
-    Config::Growth::maximum_position,
-    Config::Growth::limit_tolerance,
-    Config::Growth::pending_expiry_ms * 1000ULL,
+    Product::Growth::step,
+    Board::Position::safe_maximum,
+    Board::Position::tolerance,
+    Product::Growth::pending_expiry_ms * 1000ULL,
     {
         0,
-        Config::Growth::touch_cooldown_ms * 1000ULL,
-        Config::Growth::speech_cooldown_ms * 1000ULL,
-        Config::Growth::sunlight_cooldown_ms * 1000ULL,
-        Config::Growth::climate_cooldown_ms * 1000ULL,
+        Product::Growth::touch_cooldown_ms * 1000ULL,
+        Product::Growth::speech_cooldown_ms * 1000ULL,
+        Product::Growth::sunlight_cooldown_ms * 1000ULL,
+        Product::Growth::climate_cooldown_ms * 1000ULL,
     },
 }};
 PlantV2Application application{
@@ -163,6 +168,7 @@ PlantV2Application application{
     battery,
     growth,
     light,
+    Product::Acoustic::actuator_recovery_ms * 1000ULL,
 };
 CommunicationService communication{ble};
 
@@ -173,29 +179,35 @@ bool boot_finalized = false;
 bool communication_was_connected = false;
 bool communication_was_secure = false;
 
-static_assert(Config::Product::ota_chunk_size == kMaximumOtaChunkSize);
+static_assert(Product::Product::ota_chunk_size == kMaximumOtaChunkSize);
 
 bool initialize_hardware() {
-    bool ok = true;
-    ok = adc.initialize().ok() && ok;
-    ok = i2c.initialize().ok() && ok;
-    ok = motion.initialize().ok() && ok;
-    ok = led_output.initialize().ok() && ok;
-    ok = haptic.initialize().ok() && ok;
-    ok = touch.initialize().ok() && ok;
-    ok = power_port.initialize().ok() && ok;
-    ok = acoustic_port.initialize().ok() && ok;
-    ok = illumination_port.initialize().ok() && ok;
-    ok = climate_port.initialize().ok() && ok;
-    ok = battery_port.initialize().ok() && ok;
-    ok = communication.initialize().ok() && ok;
-    return ok;
+    // 闭环位置、输出、触摸唤醒、电源和 BLE 是可安全运行的必要能力。
+    // 环境传感器允许单项降级：初始化失败后其 poll 会产生 SensorFault 快照，
+    // 但设备仍可绑定、上报故障、OTA 和执行不依赖该传感器的交互。
+    bool critical_ok = true;
+    critical_ok = adc.initialize().ok() && critical_ok;
+    const Status i2c_status = i2c.initialize();
+    critical_ok = motion.initialize().ok() && critical_ok;
+    critical_ok = led_output.initialize().ok() && critical_ok;
+    critical_ok = haptic.initialize().ok() && critical_ok;
+    critical_ok = touch.initialize().ok() && critical_ok;
+    critical_ok = power_port.initialize().ok() && critical_ok;
+
+    const Status acoustic_status = acoustic_port.initialize();
+    const Status illumination_status = illumination_port.initialize();
+    const Status climate_status = climate_port.initialize();
+    const Status battery_status = battery_port.initialize();
+    if (!i2c_status.ok() || !acoustic_status.ok() || !illumination_status.ok() ||
+        !climate_status.ok() || !battery_status.ok()) {
+        ESP_LOGW(kTag, "one or more optional sensors started in degraded mode");
+    }
+
+    critical_ok = communication.initialize().ok() && critical_ok;
+    return critical_ok;
 }
 
 ErrorCode active_fault() {
-    if (lifecycle.snapshot().state != DeviceState::Fault) {
-        return ErrorCode::None;
-    }
     if (motion.position_snapshot().fault != MotionFault::None ||
         motion.position_snapshot().feedback != PositionFeedbackState::Valid) {
         return ErrorCode::MotionFailure;
@@ -206,7 +218,9 @@ ErrorCode active_fault() {
         battery.snapshot().state == BatteryState::SensorFault) {
         return ErrorCode::SensorFailure;
     }
-    return ErrorCode::InternalFailure;
+    return lifecycle.snapshot().state == DeviceState::Fault
+               ? ErrorCode::InternalFailure
+               : ErrorCode::None;
 }
 
 void respond_with_current_state(const Command& command, Status status) {
@@ -222,7 +236,7 @@ void respond_with_current_state(const Command& command, Status status) {
             application.growth_motion_active() ? Behavior::Grow : behavior_state.behavior,
             ota_state.state,
             static_cast<std::uint32_t>(ota_state.received_bytes),
-            Config::Product::firmware_version,
+            Product::Product::firmware_version,
             protocol::PositionFeedbackCapability |
                 protocol::AcousticActivityCapability |
                 protocol::RelativeIlluminationCapability |
@@ -259,17 +273,17 @@ void finish_boot(bool sensors_ok, std::uint64_t now_us) {
     ESP_LOGI(
         kTag,
         "boot product=%s hw=%" PRIu32 " firmware=0x%08" PRIx32 " status=%s",
-        Config::Product::device_name,
-        Config::Product::hardware_revision,
-        Config::Product::firmware_version,
+        Product::Product::device_name,
+        Product::Product::hardware_revision,
+        Product::Product::firmware_version,
         boot_ok ? "ready" : "fault");
 }
 
 bool position_is_safe_for_deep_sleep() {
     const PositionSnapshot position = motion.position_snapshot();
     return position.feedback == PositionFeedbackState::Valid && !position.moving &&
-           std::abs(static_cast<int>(position.actual_position) - Config::Position::sleep) <=
-               Config::Position::tolerance;
+           std::abs(static_cast<int>(position.actual_position) - Board::Position::sleep) <=
+               Board::Position::tolerance;
 }
 
 }  // namespace
@@ -292,9 +306,9 @@ void initialize() {
             (void)application.tick(now_us);
             if (application.boot_sensors_ready() ||
                 now_us - boot_started_us >= kBootSensorTimeoutUs) {
-                finish_boot(application.boot_sensors_ok(), now_us);
+                finish_boot(application.boot_critical_sensors_ok(), now_us);
             }
-            vTaskDelay(pdMS_TO_TICKS(Config::Interaction::system_tick_ms));
+            vTaskDelay(pdMS_TO_TICKS(Product::Interaction::system_tick_ms));
             continue;
         }
 
@@ -326,6 +340,8 @@ void initialize() {
         TouchGesture gesture{};
         if (touch.poll(now_us / 1000ULL, gesture)) {
             last_activity_us = now_us;
+            const bool waking_from_sleep =
+                lifecycle.snapshot().state == DeviceState::Sleeping;
             if (gesture == TouchGesture::FactoryResetHold) {
                 const Status reset_status = ble.forget_bonds();
                 if (reset_status.ok()) {
@@ -335,7 +351,10 @@ void initialize() {
                 }
                 ESP_LOGE(kTag, "failed to clear BLE bonds");
             } else {
-                (void)application.handle_touch(gesture, now_us);
+                const Status touch_status = application.handle_touch(gesture, now_us);
+                if (touch_status.ok() && waking_from_sleep) {
+                    (void)ble.request_fast_advertising();
+                }
             }
         }
 
@@ -376,16 +395,16 @@ void initialize() {
         if (lifecycle_state.state == DeviceState::Idle &&
             !application.growth_motion_active() &&
             now_us - last_activity_us >=
-                Config::Interaction::automatic_sleep_ms * 1000ULL) {
+                Product::Interaction::automatic_sleep_ms * 1000ULL) {
             last_activity_us = now_us;
             (void)application.handle_idle_timeout();
         }
         if (lifecycle_state.state == DeviceState::Sleeping &&
             lifecycle_state.power_mode == PowerMode::LightSleep &&
-            Config::Power::deep_sleep_enabled &&
-            Config::Power::deep_sleep_delay_ms != 0 &&
+            Product::Power::deep_sleep_enabled &&
+            Product::Power::deep_sleep_delay_ms != 0 &&
             position_is_safe_for_deep_sleep() &&
-            now_us - last_activity_us >= Config::Power::deep_sleep_delay_ms * 1000ULL) {
+            now_us - last_activity_us >= Product::Power::deep_sleep_delay_ms * 1000ULL) {
             const OtaState ota_state = ota.snapshot().state;
             (void)power.request_deep_sleep(PowerConditions{
                 communication.connected(),
@@ -393,7 +412,7 @@ void initialize() {
                 false,
             });
         }
-        vTaskDelay(pdMS_TO_TICKS(Config::Interaction::system_tick_ms));
+        vTaskDelay(pdMS_TO_TICKS(Product::Interaction::system_tick_ms));
     }
 }
 

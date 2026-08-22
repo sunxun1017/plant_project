@@ -17,7 +17,6 @@ struct EspTouchConfig {
 
 class EspTouchAdapter final : public ITouchPort {
 public:
-    EspTouchAdapter() noexcept;
     explicit EspTouchAdapter(EspTouchConfig config) noexcept;
     Status initialize() override;
     bool poll(std::uint64_t now_ms, TouchGesture& gesture) override;

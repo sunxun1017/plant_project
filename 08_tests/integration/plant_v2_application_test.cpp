@@ -203,6 +203,7 @@ struct V2Fixture {
         battery,
         growth,
         light,
+        100000,
     };
 };
 
@@ -223,9 +224,81 @@ void test_boot_sensor_gate_and_telemetry_snapshots() {
     queue_valid_boot_samples(fixture);
     CHECK_V2_APP(fixture.app.tick(1000).ok());
     CHECK_V2_APP(fixture.app.boot_sensors_ready());
-    CHECK_V2_APP(fixture.app.boot_sensors_ok());
+    CHECK_V2_APP(fixture.app.boot_critical_sensors_ok());
     CHECK_V2_APP(fixture.app.climate_snapshot().temperature_centi_c == 2300);
     CHECK_V2_APP(fixture.app.battery_snapshot().level_per_mille == 750);
+}
+
+void test_optional_sensor_faults_do_not_fail_critical_boot_gate() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(true).ok());
+    fixture.acoustic_port.queued.status = Status::failure(ErrorCode::SensorFailure);
+    fixture.illumination_port.queued.status = Status::failure(ErrorCode::SensorFailure);
+    fixture.climate_port.queued.status = Status::failure(ErrorCode::SensorFailure);
+    fixture.battery_port.queued.status = Status::failure(ErrorCode::SensorFailure);
+
+    CHECK_V2_APP(fixture.app.tick(1000).ok());
+    CHECK_V2_APP(fixture.app.boot_sensors_ready());
+    CHECK_V2_APP(fixture.app.boot_critical_sensors_ok());
+    CHECK_V2_APP(fixture.app.acoustic_snapshot().state == AcousticState::SensorFault);
+    CHECK_V2_APP(
+        fixture.app.illumination_snapshot().state == IlluminationState::SensorFault);
+    CHECK_V2_APP(fixture.app.climate_snapshot().state == ClimateState::SensorFault);
+    CHECK_V2_APP(fixture.app.battery_snapshot().state == BatteryState::SensorFault);
+
+    fixture.motion.snapshot.feedback = PositionFeedbackState::OpenCircuit;
+    CHECK_V2_APP(!fixture.app.boot_critical_sensors_ok());
+}
+
+void test_light_sleep_keeps_environment_sampling_and_defers_growth() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(true).ok());
+    CHECK_V2_APP(fixture.lifecycle.begin_behavior(Behavior::Sleep).ok());
+    CHECK_V2_APP(
+        fixture.lifecycle.apply_behavior_outcome(BehaviorOutcome::CompletedSleeping).ok());
+    CHECK_V2_APP(fixture.lifecycle.enter_light_sleep().ok());
+
+    fixture.acoustic_port.queued = {AcousticSample{900, true}, true, Status::success()};
+    fixture.climate_port.queued = {
+        ClimateSample{2300, 500, true}, true, Status::success()};
+    CHECK_V2_APP(fixture.app.tick(1000).ok());
+    CHECK_V2_APP(!fixture.acoustic_port.enabled);
+    CHECK_V2_APP(fixture.acoustic_port.queued.available);
+    CHECK_V2_APP(fixture.climate_port.enabled);
+    CHECK_V2_APP(fixture.app.climate_snapshot().state == ClimateState::Suitable);
+
+    fixture.climate_port.queued = {
+        ClimateSample{2300, 500, true}, true, Status::success()};
+    CHECK_V2_APP(fixture.app.tick(600001001).ok());
+    CHECK_V2_APP(!fixture.app.growth_snapshot().pending);
+    CHECK_V2_APP(!fixture.app.growth_motion_active());
+
+    CHECK_V2_APP(fixture.lifecycle.wake(false).ok());
+    CHECK_V2_APP(fixture.app.tick(600002001).ok());
+    CHECK_V2_APP(fixture.acoustic_port.enabled);
+    CHECK_V2_APP(fixture.app.growth_motion_active());
+    CHECK_V2_APP(fixture.motion.move_target == 450);
+}
+
+void test_acoustic_mask_includes_actuator_recovery_window() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(true).ok());
+    fixture.motion.snapshot.moving = true;
+    fixture.acoustic_port.queued = {
+        AcousticSample{900, true}, true, Status::success()};
+    CHECK_V2_APP(fixture.app.tick(1000).ok());
+    CHECK_V2_APP(fixture.app.acoustic_snapshot().interference_masked);
+
+    fixture.motion.snapshot.moving = false;
+    fixture.acoustic_port.queued = {
+        AcousticSample{900, true}, true, Status::success()};
+    CHECK_V2_APP(fixture.app.tick(50000).ok());
+    CHECK_V2_APP(fixture.app.acoustic_snapshot().interference_masked);
+
+    fixture.acoustic_port.queued = {
+        AcousticSample{900, true}, true, Status::success()};
+    CHECK_V2_APP(fixture.app.tick(102000).ok());
+    CHECK_V2_APP(!fixture.app.acoustic_snapshot().interference_masked);
 }
 
 void test_touch_credit_uses_measured_position_and_closes_motion_loop() {
@@ -261,6 +334,9 @@ void test_idle_position_failure_enters_fault() {
 
 int run_plant_v2_application_tests() {
     test_boot_sensor_gate_and_telemetry_snapshots();
+    test_optional_sensor_faults_do_not_fail_critical_boot_gate();
+    test_light_sleep_keeps_environment_sampling_and_defers_growth();
+    test_acoustic_mask_includes_actuator_recovery_window();
     test_touch_credit_uses_measured_position_and_closes_motion_loop();
     test_idle_position_failure_enters_fault();
     return failures;

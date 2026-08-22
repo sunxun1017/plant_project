@@ -1,21 +1,8 @@
 #include "05_adapters/espidf/touch/touch_adapter.hpp"
 
-#include "06_bsp/plant_v1/plant_v1_board.hpp"
 #include "driver/gpio.h"
 
 namespace plant {
-
-using V1Config = bsp::v1::BoardConfig;
-
-EspTouchAdapter::EspTouchAdapter() noexcept
-    : EspTouchAdapter(EspTouchConfig{
-          V1Config::Gpio::touch_input,
-          V1Config::Touch::active_high,
-          V1Config::Touch::debounce_ms,
-          V1Config::Touch::long_press_ms,
-          0,
-          V1Config::Touch::enable_internal_pull_down,
-      }) {}
 
 EspTouchAdapter::EspTouchAdapter(EspTouchConfig config) noexcept : config_(config) {}
 
