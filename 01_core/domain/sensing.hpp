@@ -139,6 +139,7 @@ struct GrowthDecision {
 struct GrowthSnapshot {
     GrowthSource recent_source{GrowthSource::None};
     GrowthSource pending_source{GrowthSource::None};
+    std::uint8_t pending_count{0};
     bool pending{false};
     bool at_limit{false};
 };

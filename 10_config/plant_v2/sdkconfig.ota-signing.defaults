@@ -1,0 +1,6 @@
+# 可与仓库根 sdkconfig.defaults 叠加的 V2 OTA 签名验证配置。
+# 不在构建机保存私钥：构建产物必须由受控签名环境执行 idf.py secure-sign-data。
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=n

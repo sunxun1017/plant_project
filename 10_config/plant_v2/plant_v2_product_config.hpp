@@ -74,6 +74,10 @@ struct ProductConfig final {
     struct Interaction final {
         static constexpr std::uint32_t automatic_sleep_ms = 5U * 60U * 1000U;
         static constexpr std::uint32_t system_tick_ms = 20;
+        // 入睡后的 1 秒仍用活动 Tick 完成渐灭和短振动，之后降低周期唤醒频率。
+        // 250 ms 仍能推进 AHT21 的非阻塞状态机；整机平均电流必须继续上板实测。
+        static constexpr std::uint32_t sleep_transition_ms = 1000;
+        static constexpr std::uint32_t sleeping_tick_ms = 250;
     };
 
     struct Power final {
@@ -88,7 +92,7 @@ struct ProductConfig final {
         static constexpr char device_name[] = "Plant-V2-C3";
         static constexpr std::uint32_t product_id = 0x504C414EU;  // "PLAN"
         static constexpr std::uint32_t hardware_revision = 2;
-        static constexpr std::uint32_t firmware_version = 0x00020002U;
+        static constexpr std::uint32_t firmware_version = 0x00020003U;
         static constexpr std::size_t ota_chunk_size = 496;
     };
 
@@ -130,6 +134,9 @@ static_assert(
     ProductConfig::Growth::maximum_pending_credits <= 4);
 static_assert(ProductConfig::Growth::inactivity_before_decay_ms > 0);
 static_assert(ProductConfig::Growth::decay_interval_ms > 0);
+static_assert(
+    ProductConfig::Interaction::sleeping_tick_ms >=
+    ProductConfig::Interaction::system_tick_ms);
 static_assert(
     ProductConfig::Ble::fast_advertising_interval_min_units <=
     ProductConfig::Ble::fast_advertising_interval_max_units);

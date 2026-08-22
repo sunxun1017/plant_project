@@ -57,7 +57,7 @@ V1 的全部命令在 V2 继续有效；`SetBehavior` 仍只接受 0–5，`Grow
 | 47 | 2 | Battery Voltage | mV |
 | 49 | 1 | Recent Growth Source | 0 none，1 touch，2 speech，3 light，4 climate，5 inactivity decay |
 | 50 | 1 | Pending Growth Source | 同上 |
-| 51 | 1 | Growth Flags | bit0 pending，bit1 at limit |
+| 51 | 1 | Growth Flags | bit0 pending，bit1 at limit，bit2–4 待处理队列数量 0–4 |
 | 52 | 1 | BLE Flags | bit0 encrypted，bit1 bonded |
 | 53 | 1 | Active Fault | `ErrorCode`；0 表示无活动故障 |
 

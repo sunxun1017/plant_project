@@ -77,6 +77,7 @@ public:
     }
 
     Status tick(std::uint64_t) override { return tick_status; }
+    bool active() const noexcept override { return output_active; }
 
     HapticPattern last_pattern{HapticPattern::Off};
     std::uint32_t last_execution_id{0};
@@ -84,6 +85,7 @@ public:
     int stop_count{0};
     Status next_status{};
     Status tick_status{};
+    bool output_active{false};
 };
 
 int failures = 0;

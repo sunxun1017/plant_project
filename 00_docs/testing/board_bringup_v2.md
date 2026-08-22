@@ -33,6 +33,8 @@
 3. 验证 WakeUp、Happy、Attention、Calm 和 Sleep 均不改变舵机位置；再分别验证 Grow
    和无互动 Retract 的到位条件。
 4. 断开电位器滑动端、短接到地/电源，确认舵机立即停止且不继续增长。
+   静止时用可控方式注入单个越界毛刺，确认不会进入 `Fault`；连续三个异常必须
+   确认故障。运动过程中首个异常仍必须立即停止输出。
 5. 人为阻挡机构，验证无位移和超时检测；用限流避免真实堵转损坏。
 6. 在任意高度复位，确认只读取当前位置，不重放上一次命令。
 7. 舵机断电后施加轻微外力，记录机构是否自保持；不自保持时不得宣称断电保持高度。
@@ -104,3 +106,34 @@
   安静和拥挤射频环境记录发现 P50/P95。
 - 分别测量活动、传感监测轻睡眠和深睡眠电流；首版深睡默认关闭，只有完成准入测试后
   才允许在产品配置启用。
+
+## 10. 生产 OTA 签名准入
+
+根目录 `sdkconfig.defaults` 是开发联调配置，不启用密码学镜像验证，启动日志会明确提示。
+生产候选构建必须叠加 `10_config/plant_v2/sdkconfig.ota-signing.defaults`：
+
+```bash
+idf.py -B /tmp/plant-v2-signed-build \
+  -D PLANT_PRODUCT=v2 \
+  -D SDKCONFIG=/tmp/plant-v2-signed-sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;10_config/plant_v2/sdkconfig.ota-signing.defaults" \
+  build
+```
+
+该配置故意不把私钥路径写入仓库，也不在普通构建机自动签名。将未签名镜像交给受控签名
+环境后执行：
+
+```bash
+idf.py -B /tmp/plant-v2-signed-build secure-sign-data \
+  --keyfile /secure/plant-v2-ota-signing-key.pem \
+  --output /tmp/plant_v2_signed.bin \
+  /tmp/plant-v2-signed-build/plant_v2.bin
+idf.py -B /tmp/plant-v2-signed-build secure-verify-signature \
+  --keyfile /secure/plant-v2-ota-signing-key.pem \
+  /tmp/plant_v2_signed.bin
+```
+
+私钥必须由产品负责人确定生成、备份、访问控制、轮换和撤销策略，不能提交到 Git。首次
+建立信任的设备也必须运行使用同一可信签名体系构建并签名的应用。上板至少验证：合法签名
+升级成功、任意改动一个字节被拒绝、错误密钥被拒绝、传输中断保持旧固件、启动自检失败
+触发回滚。是否进一步烧录 Secure Boot/eFuse 属于不可逆生产决策，必须单独评审。

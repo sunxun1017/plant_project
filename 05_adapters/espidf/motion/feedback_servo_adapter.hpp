@@ -22,6 +22,7 @@ private:
     Status start_target(std::uint16_t target_position);
     Status set_target_pwm(std::uint16_t target_position);
     Status sample_position(std::uint64_t now_us);
+    Status record_invalid_feedback(PositionFeedbackState feedback);
     Status fail_motion(MotionFault fault);
 
     V2AdcSampler& adc_;
@@ -34,6 +35,7 @@ private:
     std::uint16_t progress_position_{0};
     std::uint8_t stable_samples_{0};
     std::uint8_t opposite_samples_{0};
+    std::uint8_t invalid_samples_{0};
     std::int8_t expected_direction_{0};
     bool initialized_{false};
 };

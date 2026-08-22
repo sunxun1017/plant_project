@@ -187,6 +187,7 @@ void test_growth_queue_rejects_only_the_credit_beyond_its_bound() {
         service.submit(GrowthSource::Touch, 5).code() == ErrorCode::Busy);
     CHECK_SENSING(service.snapshot().pending);
     CHECK_SENSING(service.snapshot().pending_source == GrowthSource::Touch);
+    CHECK_SENSING(service.snapshot().pending_count == 4);
 }
 
 void test_growth_limit_expiry_cooldown_and_invalid_feedback() {

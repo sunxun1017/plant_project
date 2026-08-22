@@ -241,25 +241,43 @@ Status FeedbackServoAdapter::sample_position(std::uint64_t now_us) {
         static_cast<adc_channel_t>(Config::Adc::position_channel), raw);
     next_sample_us_ = now_us + Config::Position::sample_period_ms * 1000ULL;
     if (!status.ok()) {
-        snapshot_.feedback = PositionFeedbackState::Unavailable;
-        return status;
+        return record_invalid_feedback(PositionFeedbackState::Unavailable);
     }
     if (raw <= Config::Position::rail_low_raw_maximum) {
-        snapshot_.feedback = PositionFeedbackState::ShortCircuit;
-        return Status::failure(ErrorCode::MotionFailure);
+        return record_invalid_feedback(PositionFeedbackState::ShortCircuit);
     }
     if (raw >= Config::Position::rail_high_raw_minimum) {
-        snapshot_.feedback = PositionFeedbackState::OpenCircuit;
-        return Status::failure(ErrorCode::MotionFailure);
+        return record_invalid_feedback(PositionFeedbackState::OpenCircuit);
     }
     if (raw < Config::Position::valid_raw_minimum ||
         raw > Config::Position::valid_raw_maximum) {
-        snapshot_.feedback = PositionFeedbackState::OutOfRange;
-        return Status::failure(ErrorCode::MotionFailure);
+        return record_invalid_feedback(PositionFeedbackState::OutOfRange);
     }
+    invalid_samples_ = 0;
     snapshot_.actual_position = normalize_position(raw);
     snapshot_.feedback = PositionFeedbackState::Valid;
     return Status::success();
+}
+
+Status FeedbackServoAdapter::record_invalid_feedback(PositionFeedbackState feedback) {
+    // 尚未取得过有效位置或正在运动时不能掩盖反馈异常：前者是启动安全门，后者必须
+    // 在首个无效样本停止舵机。只有已经安全静止的机构才允许去除短暂 ADC 毛刺。
+    if (snapshot_.feedback != PositionFeedbackState::Valid || snapshot_.moving) {
+        snapshot_.feedback = feedback;
+        invalid_samples_ = Config::Position::idle_invalid_sample_count;
+        return Status::failure(ErrorCode::MotionFailure);
+    }
+    if (invalid_samples_ == 0) {
+        invalid_samples_ = 1;
+    } else if (invalid_samples_ < Config::Position::idle_invalid_sample_count) {
+        ++invalid_samples_;
+    }
+    if (invalid_samples_ < Config::Position::idle_invalid_sample_count) {
+        // 暂停本 Tick 的生长决策，但不把尚未确认的静止态毛刺升级为全局故障。
+        return Status::failure(ErrorCode::Busy);
+    }
+    snapshot_.feedback = feedback;
+    return Status::failure(ErrorCode::MotionFailure);
 }
 
 Status FeedbackServoAdapter::fail_motion(MotionFault fault) {

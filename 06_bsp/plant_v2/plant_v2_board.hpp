@@ -101,6 +101,9 @@ struct BoardConfig final {
         static constexpr std::uint16_t tolerance = 15;
         static constexpr std::uint16_t minimum_progress = 5;
         static constexpr std::uint8_t stable_sample_count = 4;
+        // 静止时连续异常达到该次数才确认反馈故障；运动时仍在首个异常立即断电。
+        // 暂定值需用舵机、RGB、振动和 BLE 同时工作时的 ADC 噪声数据验证。
+        static constexpr std::uint8_t idle_invalid_sample_count = 3;
         static constexpr std::uint32_t no_progress_timeout_ms = 600;
         static constexpr std::uint32_t motion_timeout_ms = 3500;
         static constexpr std::uint32_t sample_period_ms = 20;
@@ -212,6 +215,7 @@ static_assert(BoardConfig::Gpio::aht21_scl != 18 && BoardConfig::Gpio::aht21_scl
 static_assert(BoardConfig::Gpio::aht21_sda < 12 || BoardConfig::Gpio::aht21_sda > 17);
 static_assert(BoardConfig::Gpio::aht21_scl < 12 || BoardConfig::Gpio::aht21_scl > 17);
 static_assert(BoardConfig::Position::safe_minimum < BoardConfig::Position::safe_maximum);
+static_assert(BoardConfig::Position::idle_invalid_sample_count > 0);
 static_assert(
     BoardConfig::PowerSource::minimum_capacity_mah <=
     BoardConfig::PowerSource::maximum_capacity_mah);

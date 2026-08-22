@@ -4,6 +4,7 @@
 
 #include "01_core/domain/sensing.hpp"
 #include "02_ports/motion/position_motion_port.hpp"
+#include "02_ports/haptic/haptic_port.hpp"
 #include "02_ports/sensing/acoustic_sensor_port.hpp"
 #include "02_ports/sensing/battery_sensor_port.hpp"
 #include "02_ports/sensing/climate_sensor_port.hpp"
@@ -26,6 +27,7 @@ public:
         BehaviorService& behavior,
         OtaService& ota,
         IPositionMotionPort& motion,
+        IHapticPort& haptic,
         IAcousticSensorPort& acoustic_port,
         IIlluminationSensorPort& illumination_port,
         IClimateSensorPort& climate_port,
@@ -69,6 +71,7 @@ private:
     BehaviorService& behavior_;
     OtaService& ota_;
     IPositionMotionPort& motion_;
+    IHapticPort& haptic_;
     IAcousticSensorPort& acoustic_port_;
     IIlluminationSensorPort& illumination_port_;
     IClimateSensorPort& climate_port_;

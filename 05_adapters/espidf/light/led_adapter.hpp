@@ -33,6 +33,12 @@ private:
     LightPattern pattern_{LightPattern::FadeOut};
     std::uint64_t started_us_{0};
     std::uint16_t intensity_{1000};
+    std::uint8_t current_red_{0};
+    std::uint8_t current_green_{0};
+    std::uint8_t current_blue_{0};
+    std::uint8_t fade_start_red_{0};
+    std::uint8_t fade_start_green_{0};
+    std::uint8_t fade_start_blue_{0};
 };
 
 }  // namespace plant

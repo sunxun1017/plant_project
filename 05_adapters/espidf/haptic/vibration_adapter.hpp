@@ -23,12 +23,14 @@ public:
     Status play(HapticPattern pattern, std::uint32_t execution_id) override;
     Status stop() override;
     Status tick(std::uint64_t now_us) override;
+    [[nodiscard]] bool active() const noexcept override;
 
 private:
     Status set_duty(std::uint8_t duty);
 
     EspVibrationConfig config_;
     bool initialized_{false};
+    bool active_{false};
     HapticPattern pattern_{HapticPattern::Off};
     std::uint64_t started_us_{0};
 };

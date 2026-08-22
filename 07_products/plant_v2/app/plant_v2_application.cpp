@@ -10,6 +10,7 @@ PlantV2Application::PlantV2Application(
     BehaviorService& behavior,
     OtaService& ota,
     IPositionMotionPort& motion,
+    IHapticPort& haptic,
     IAcousticSensorPort& acoustic_port,
     IIlluminationSensorPort& illumination_port,
     IClimateSensorPort& climate_port,
@@ -26,6 +27,7 @@ PlantV2Application::PlantV2Application(
       behavior_(behavior),
       ota_(ota),
       motion_(motion),
+      haptic_(haptic),
       acoustic_port_(acoustic_port),
       illumination_port_(illumination_port),
       climate_port_(climate_port),
@@ -58,11 +60,16 @@ Status PlantV2Application::tick(std::uint64_t now_us) {
         }
         const Status motion_status = poll_motion(now_us);
         if (!motion_status.ok()) {
+            if (motion_status.code() == ErrorCode::Busy) {
+                // 静止位置反馈正在确认瞬态异常。本 Tick 不推进传感奖励或启动舵机，
+                // 下一次有效采样会恢复；连续异常则由 Adapter 升级为 MotionFailure。
+                return Status::success();
+            }
             return enter_fault(motion_status);
         }
     }
 
-    bool actuator_interference = motion_.position_snapshot().moving ||
+    bool actuator_interference = motion_.position_snapshot().moving || haptic_.active() ||
                                  behavior.state == BehaviorRunState::Running;
     if (actuator_interference) {
         const std::uint64_t maximum = std::numeric_limits<std::uint64_t>::max();

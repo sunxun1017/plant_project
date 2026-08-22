@@ -378,12 +378,21 @@ python3 09_tools/protocol_tools/plant_ble_tool.py \
   --protocol-version 2 \
   --timeout 20 \
   ota /tmp/plant-v2-next.bin \
-  --version 0x00020002 \
+  --version 0x00020003 \
   --hardware-revision 2
 ```
 
 命令中的版本必须与本次镜像编译进 `ProductConfig::Product::firmware_version` 的值完全
 一致；下方 `0x00020001` 是前一轮 Fault 恢复 OTA 的历史实机证据。
+
+根 `sdkconfig.defaults` 仍是开发联调配置，`signed_image` 元数据不能替代密码学验证。生产候选
+必须使用 [V2 上板清单的生产 OTA 签名准入](../testing/board_bringup_v2.md#10-生产-ota-签名准入)
+叠加签名校验配置，并在受控环境签名；普通构建启动时也会明确记录签名验证未启用。
+
+当前 V2 传感器校准和体验策略仍来自 BSP/ProductConfig 编译期默认值，运行时配置命令、
+范围校验、掉电原子写入和 Storage busy 尚未形成完整纵向切片。NVS 现阶段只承担 NimBLE
+绑定持久化，不能把“允许持久化校准”描述成已经实现；在配置协议和恢复策略冻结前继续通过
+重新构建/OTA 调整样机参数，且绝不保存最后舵机命令。
 
 2026-08-22 裸板证据：设备先以 `0x00020000`、`Fault/MotionFailure`、`secure=true`、
 `bonded=true` 运行，从同一加密绑定链路接收了 586080 字节镜像；`BeginOta` 进入

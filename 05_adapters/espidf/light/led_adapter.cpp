@@ -65,6 +65,11 @@ Status EspLedAdapter::play(LightPattern pattern, std::uint32_t) {
     if (!initialized_) {
         return Status::failure(ErrorCode::InvalidState);
     }
+    if (pattern == LightPattern::FadeOut) {
+        fade_start_red_ = current_red_;
+        fade_start_green_ = current_green_;
+        fade_start_blue_ = current_blue_;
+    }
     pattern_ = pattern;
     started_us_ = static_cast<std::uint64_t>(esp_timer_get_time());
     return tick(started_us_);
@@ -96,11 +101,13 @@ Status EspLedAdapter::tick(std::uint64_t now_us) {
             return set_rgb(0, duty / 2, duty / 5);
         }
         case LightPattern::FadeOut: {
-            const auto duty = static_cast<std::uint8_t>(
-                elapsed >= 600000 ? 0
-                                  : config_.maximum_duty -
-                                        elapsed * config_.maximum_duty / 600000);
-            return set_rgb(0, duty, duty / 3);
+            constexpr std::uint64_t duration_us = 600000;
+            const std::uint64_t remaining =
+                elapsed >= duration_us ? 0 : duration_us - elapsed;
+            return set_rgb(
+                static_cast<std::uint8_t>(fade_start_red_ * remaining / duration_us),
+                static_cast<std::uint8_t>(fade_start_green_ * remaining / duration_us),
+                static_cast<std::uint8_t>(fade_start_blue_ * remaining / duration_us));
         }
         case LightPattern::ErrorBlink:
             return set_rgb(
@@ -160,6 +167,9 @@ Status EspLedAdapter::set_rgb(std::uint8_t red, std::uint8_t green, std::uint8_t
             return Status::failure(ErrorCode::LightingFailure);
         }
     }
+    current_red_ = red;
+    current_green_ = green;
+    current_blue_ = blue;
     return Status::success();
 }
 

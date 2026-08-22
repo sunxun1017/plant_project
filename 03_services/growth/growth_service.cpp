@@ -151,6 +151,7 @@ std::size_t GrowthService::source_index(GrowthSource source) noexcept {
 }
 
 void GrowthService::refresh_pending_snapshot() noexcept {
+    snapshot_.pending_count = static_cast<std::uint8_t>(pending_count_);
     snapshot_.pending = pending_count_ != 0;
     snapshot_.pending_source = snapshot_.pending
                                    ? pending_sources_[pending_head_]

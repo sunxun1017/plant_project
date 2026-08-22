@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "10_config/plant_v2/plant_v2_product_config.hpp"
 #include "07_products/plant_v2/app/plant_v2_application.hpp"
 
 namespace plant::test {
@@ -77,8 +78,14 @@ public:
 class V2Haptic final : public IHapticPort {
 public:
     Status play(HapticPattern, std::uint32_t) override { return Status::success(); }
-    Status stop() override { return Status::success(); }
+    Status stop() override {
+        output_active = false;
+        return Status::success();
+    }
     Status tick(std::uint64_t) override { return Status::success(); }
+    bool active() const noexcept override { return output_active; }
+
+    bool output_active{false};
 };
 
 class V2Power final : public IPowerPort {
@@ -187,13 +194,25 @@ struct V2Fixture {
     IlluminationService illumination;
     ClimateService climate;
     BatteryService battery{200, 80};
-    GrowthService growth{GrowthConfig{50, 900, 15, 30000000, {0, 0, 0, 0, 0}}};
+    GrowthService growth{GrowthConfig{
+        config::v2::ProductConfig::Growth::step,
+        900,
+        15,
+        config::v2::ProductConfig::Growth::pending_expiry_ms * 1000ULL,
+        {0, 0, 0, 0, 0},
+        100,
+        config::v2::ProductConfig::Growth::decay_step,
+        config::v2::ProductConfig::Growth::inactivity_before_decay_ms * 1000ULL,
+        config::v2::ProductConfig::Growth::decay_interval_ms * 1000ULL,
+        config::v2::ProductConfig::Growth::maximum_pending_credits,
+    }};
     PlantV2Application app{
         base,
         lifecycle,
         behavior,
         ota,
         motion,
+        haptic,
         acoustic_port,
         illumination_port,
         climate_port,
@@ -274,8 +293,11 @@ void test_light_sleep_keeps_environment_sampling_and_queues_growth() {
     CHECK_V2_APP(fixture.app.growth_snapshot().pending);
     CHECK_V2_APP(!fixture.app.growth_motion_active());
 
+    // 产品配置不让睡眠期间的有效互动过期；超过旧测试使用的 30 秒仍应保留。
+    CHECK_V2_APP(fixture.app.tick(640001001).ok());
+    CHECK_V2_APP(fixture.app.growth_snapshot().pending);
     CHECK_V2_APP(fixture.lifecycle.wake(false).ok());
-    CHECK_V2_APP(fixture.app.tick(600002001).ok());
+    CHECK_V2_APP(fixture.app.tick(640002001).ok());
     CHECK_V2_APP(fixture.acoustic_port.enabled);
     CHECK_V2_APP(fixture.app.growth_motion_active());
     CHECK_V2_APP(fixture.motion.move_target == 450);
@@ -291,6 +313,27 @@ void test_acoustic_mask_includes_actuator_recovery_window() {
     CHECK_V2_APP(fixture.app.acoustic_snapshot().interference_masked);
 
     fixture.motion.snapshot.moving = false;
+    fixture.acoustic_port.queued = {
+        AcousticSample{900, true}, true, Status::success()};
+    CHECK_V2_APP(fixture.app.tick(50000).ok());
+    CHECK_V2_APP(fixture.app.acoustic_snapshot().interference_masked);
+
+    fixture.acoustic_port.queued = {
+        AcousticSample{900, true}, true, Status::success()};
+    CHECK_V2_APP(fixture.app.tick(102000).ok());
+    CHECK_V2_APP(!fixture.app.acoustic_snapshot().interference_masked);
+}
+
+void test_acoustic_mask_includes_haptic_output_and_recovery_window() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(true).ok());
+    fixture.haptic.output_active = true;
+    fixture.acoustic_port.queued = {
+        AcousticSample{900, true}, true, Status::success()};
+    CHECK_V2_APP(fixture.app.tick(1000).ok());
+    CHECK_V2_APP(fixture.app.acoustic_snapshot().interference_masked);
+
+    fixture.haptic.output_active = false;
     fixture.acoustic_port.queued = {
         AcousticSample{900, true}, true, Status::success()};
     CHECK_V2_APP(fixture.app.tick(50000).ok());
@@ -367,6 +410,19 @@ void test_idle_position_failure_enters_fault() {
     CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Fault);
 }
 
+void test_unconfirmed_idle_position_glitch_pauses_tick_without_fault() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(true).ok());
+    fixture.motion.poll_status = Status::failure(ErrorCode::Busy);
+    fixture.acoustic_port.queued = {
+        AcousticSample{900, true}, true, Status::success()};
+
+    CHECK_V2_APP(fixture.app.tick(1000).ok());
+    CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Idle);
+    CHECK_V2_APP(fixture.acoustic_port.queued.available);
+    CHECK_V2_APP(!fixture.app.growth_motion_active());
+}
+
 void test_fault_recovery_ota_isolated_from_failed_motion_polling() {
     V2Fixture fixture;
     CHECK_V2_APP(fixture.base.finish_boot(false).ok());
@@ -389,9 +445,11 @@ int run_plant_v2_application_tests() {
     test_optional_sensor_faults_do_not_fail_critical_boot_gate();
     test_light_sleep_keeps_environment_sampling_and_queues_growth();
     test_acoustic_mask_includes_actuator_recovery_window();
+    test_acoustic_mask_includes_haptic_output_and_recovery_window();
     test_touch_credit_uses_measured_position_and_closes_motion_loop();
     test_touch_behavior_does_not_move_growth_servo();
     test_inactivity_decay_wakes_light_sleep_moves_down_and_returns_to_sleep();
+    test_unconfirmed_idle_position_glitch_pauses_tick_without_fault();
     test_idle_position_failure_enters_fault();
     test_fault_recovery_ota_isolated_from_failed_motion_polling();
     return failures;

@@ -75,15 +75,23 @@ Status EspVibrationAdapter::tick(std::uint64_t now_us) {
     return Status::failure(ErrorCode::HapticFailure);
 }
 
+bool EspVibrationAdapter::active() const noexcept {
+    return active_;
+}
+
 Status EspVibrationAdapter::set_duty(std::uint8_t duty) {
     const std::uint32_t maximum_hardware_duty =
         (1U << config_.duty_resolution_bits) - 1U;
     const std::uint32_t output =
         config_.active_high ? duty : maximum_hardware_duty - duty;
+    const bool was_active = active_;
     if (ledc_set_duty(kMode, kChannel, output) != ESP_OK ||
         ledc_update_duty(kMode, kChannel) != ESP_OK) {
+        // 关闭写失败时硬件可能仍在振动；保守保持屏蔽，不能把未知输出当作静音。
+        active_ = was_active || duty != 0;
         return Status::failure(ErrorCode::HapticFailure);
     }
+    active_ = duty != 0;
     return Status::success();
 }
 

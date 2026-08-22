@@ -47,9 +47,11 @@ public:
     }
     Status stop() override { return Status::success(); }
     Status tick(std::uint64_t) override { return tick_status; }
+    bool active() const noexcept override { return output_active; }
 
     HapticPattern pattern{HapticPattern::Off};
     Status tick_status{};
+    bool output_active{false};
 };
 
 class AppPower final : public IPowerPort {

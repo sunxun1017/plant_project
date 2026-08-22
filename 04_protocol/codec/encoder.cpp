@@ -95,7 +95,8 @@ Status Encoder::encode_response(
         output[58] = static_cast<std::uint8_t>(response.growth.pending_source);
         output[59] = static_cast<std::uint8_t>(
             (response.growth.pending ? 1U : 0U) |
-            (response.growth.at_limit ? 2U : 0U));
+            (response.growth.at_limit ? 2U : 0U) |
+            (std::min<std::uint8_t>(response.growth.pending_count, 7U) << 2U));
         output[60] = static_cast<std::uint8_t>(
             (response.ble_secure ? 1U : 0U) |
             (response.ble_bonded ? 2U : 0U));

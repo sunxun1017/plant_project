@@ -169,6 +169,7 @@ PlantV2Application application{
     behavior,
     ota,
     motion,
+    haptic,
     acoustic_port,
     illumination_port,
     climate_port,
@@ -189,8 +190,39 @@ bool hardware_configuration_ok = false;
 bool boot_finalized = false;
 bool communication_was_connected = false;
 bool communication_was_secure = false;
+ErrorCode last_tick_error = ErrorCode::None;
 
 static_assert(Product::Product::ota_chunk_size == kMaximumOtaChunkSize);
+
+void report_tick_status(Status status) {
+    if (status.ok()) {
+        last_tick_error = ErrorCode::None;
+        return;
+    }
+    if (status.code() != last_tick_error) {
+        ESP_LOGE(kTag, "application tick failed: error=%d", static_cast<int>(status.code()));
+        last_tick_error = status.code();
+    }
+}
+
+void report_event_failure(const char* operation, Status status) {
+    if (!status.ok()) {
+        ESP_LOGW(
+            kTag,
+            "%s failed: error=%d",
+            operation,
+            static_cast<int>(status.code()));
+    }
+}
+
+std::uint32_t next_loop_delay_ms(std::uint64_t now_us) {
+    if (lifecycle.snapshot().state != DeviceState::Sleeping || haptic.active() ||
+        now_us < last_activity_us ||
+        now_us - last_activity_us < Product::Interaction::sleep_transition_ms * 1000ULL) {
+        return Product::Interaction::system_tick_ms;
+    }
+    return Product::Interaction::sleeping_tick_ms;
+}
 
 bool initialize_hardware() {
     // 闭环位置、输出、触摸唤醒、电源和 BLE 是可安全运行的必要能力。
@@ -301,6 +333,11 @@ bool position_is_safe_for_deep_sleep() {
 }  // namespace
 
 void initialize() {
+#if !CONFIG_SECURE_SIGNED_ON_UPDATE
+    ESP_LOGW(
+        kTag,
+        "development OTA build: cryptographic image verification is disabled");
+#endif
     boot_started_us = static_cast<std::uint64_t>(esp_timer_get_time());
     last_activity_us = boot_started_us;
     hardware_configuration_ok = initialize_hardware();
@@ -315,7 +352,7 @@ void initialize() {
     while (true) {
         const std::uint64_t now_us = static_cast<std::uint64_t>(esp_timer_get_time());
         if (!boot_finalized) {
-            (void)application.tick(now_us);
+            report_tick_status(application.tick(now_us));
             if (application.boot_sensors_ready() ||
                 now_us - boot_started_us >= kBootSensorTimeoutUs) {
                 finish_boot(application.boot_critical_sensors_ok(), now_us);
@@ -325,7 +362,7 @@ void initialize() {
         }
 
         const DeviceState lifecycle_before_tick = lifecycle.snapshot().state;
-        (void)application.tick(now_us);
+        report_tick_status(application.tick(now_us));
 
         bool confirmation_attempted = false;
         const Status confirmation_status = ota.poll_boot_confirmation(
@@ -341,10 +378,14 @@ void initialize() {
         const bool communication_secure = ble.secure();
         if (!communication_was_secure && communication_secure) {
             last_activity_us = now_us;
-            (void)application.handle_communication_connected();
+            report_event_failure(
+                "communication connected",
+                application.handle_communication_connected());
         }
         if (communication_was_connected && !communication_connected) {
-            (void)application.handle_communication_disconnected();
+            report_event_failure(
+                "communication disconnected",
+                application.handle_communication_disconnected());
         }
         communication_was_connected = communication_connected;
         communication_was_secure = communication_secure;
@@ -365,7 +406,9 @@ void initialize() {
             } else {
                 const Status touch_status = application.handle_touch(gesture, now_us);
                 if (touch_status.ok() && waking_from_sleep) {
-                    (void)ble.request_fast_advertising();
+                    report_event_failure("fast advertising", ble.request_fast_advertising());
+                } else if (!touch_status.ok() && touch_status.code() != ErrorCode::Busy) {
+                    report_event_failure("touch", touch_status);
                 }
             }
         }
@@ -409,7 +452,7 @@ void initialize() {
             now_us - last_activity_us >=
                 Product::Interaction::automatic_sleep_ms * 1000ULL) {
             last_activity_us = now_us;
-            (void)application.handle_idle_timeout();
+            report_event_failure("idle timeout", application.handle_idle_timeout());
         }
         if (lifecycle_state.state == DeviceState::Sleeping &&
             lifecycle_state.power_mode == PowerMode::LightSleep &&
@@ -418,13 +461,16 @@ void initialize() {
             position_is_safe_for_deep_sleep() &&
             now_us - last_activity_us >= Product::Power::deep_sleep_delay_ms * 1000ULL) {
             const OtaState ota_state = ota.snapshot().state;
-            (void)power.request_deep_sleep(PowerConditions{
-                communication.connected(),
-                ota_state == OtaState::Receiving || ota_state == OtaState::Verifying,
-                false,
-            });
+            report_event_failure(
+                "deep sleep",
+                power.request_deep_sleep(PowerConditions{
+                    communication.connected(),
+                    ota_state == OtaState::Receiving || ota_state == OtaState::Verifying,
+                    // V2 当前没有运行时配置写入；加入持久化后必须接入真实 Storage busy。
+                    false,
+                }));
         }
-        vTaskDelay(pdMS_TO_TICKS(Product::Interaction::system_tick_ms));
+        vTaskDelay(pdMS_TO_TICKS(next_loop_delay_ms(now_us)));
     }
 }
 

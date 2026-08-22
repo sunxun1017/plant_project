@@ -205,6 +205,8 @@ void test_v2_request_and_extended_response() {
         ClimateState::Suitable, 2350, 566, 12000, true};
     response.battery = BatterySnapshot{BatteryState::Normal, 3920, 730, true};
     response.growth.recent_source = GrowthSource::Touch;
+    response.growth.pending = true;
+    response.growth.pending_count = 4;
     response.ble_secure = true;
     response.ble_bonded = true;
     FixedBuffer<kMaximumFrameSize> frame;
@@ -215,6 +217,7 @@ void test_v2_request_and_extended_response() {
     CHECK_PROTOCOL(frame[26] == 0xA4 && frame[27] == 0x01);  // actual_position=420
     CHECK_PROTOCOL(frame[40] == static_cast<std::uint8_t>(
                                       IlluminationState::BrightExposure));
+    CHECK_PROTOCOL(frame[59] == 0x11);  // pending + queue depth 4
     CHECK_PROTOCOL(frame[60] == 0x03);  // encrypted + bonded
 }
 

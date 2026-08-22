@@ -130,6 +130,10 @@ class Response:
     def ok(self) -> bool:
         return self.error == 0
 
+    @property
+    def pending_growth_count(self) -> int:
+        return (self.growth_flags >> 2) & 0x07
+
 
 def crc32(data: bytes) -> int:
     return binascii.crc32(data) & 0xFFFFFFFF
@@ -217,6 +221,7 @@ def describe(response: Response) -> str:
         + f" battery_level={response.battery_level_per_mille / 10:.1f}%"
         + f" battery_voltage={response.battery_voltage_mv}mV"
         + f" growth={enum_name(GROWTH_SOURCES, response.recent_growth_source)}"
+        + f" pending_growth={response.pending_growth_count}/4"
         + f" secure={bool(response.ble_flags & 1)} bonded={bool(response.ble_flags & 2)}"
         + f" active_fault={enum_name(ERROR_NAMES, response.active_fault)}"
     )
