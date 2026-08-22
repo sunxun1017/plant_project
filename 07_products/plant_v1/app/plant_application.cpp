@@ -205,13 +205,22 @@ Status PlantApplication::start_behavior(Behavior behavior, InterruptionReason re
         return lifecycle_status;
     }
 
-    // TODO: behavior_.start() 若以 Busy/Unsupported 等无 outcome 错误返回，当前代码不会
-    // 恢复 before，生命周期可能停留在 Interacting；需要为这种失败补偿状态转换。
     const Status behavior_status = behavior_.start(behavior, reason); // 相同行为正在运行时按幂等成功处理。
     if (!behavior_status.ok()) { // 执行器启动失败会产生 Faulted outcome，并在这里同步生命周期。
         const BehaviorOutcome outcome = behavior_.take_outcome();
         if (outcome != BehaviorOutcome::None) {
-            (void)apply_behavior_outcome(outcome);
+            const Status outcome_status = apply_behavior_outcome(outcome);
+            if (!outcome_status.ok()) {
+                return outcome_status;
+            }
+        } else if (before.state != DeviceState::Interacting) {
+            // Busy/Unsupported 等无 outcome 错误不能把原本非交互状态遗留为 Interacting。
+            // 若调用前已经在交互，则保留仍在运行的原行为及其生命周期。
+            const Status restore_status =
+                lifecycle_.apply_behavior_outcome(BehaviorOutcome::Stopped);
+            if (!restore_status.ok()) {
+                return restore_status;
+            }
         }
     }
     return behavior_status;

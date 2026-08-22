@@ -98,11 +98,18 @@ void initialize() {
     // 硬件成功时暂不确认镜像，留到稳定运行十秒后处理。
     const Status ota_boot_status =
         hardware_ok ? Status::success() : ota_port.finalize_boot(false);
-    // 当前表达式中的 boot_ok 实际等价于 hardware_ok；ota_boot_status 表示报告操作是否成功，
-    // 不是一次独立的 OTA 健康检查。
-    const bool boot_ok = hardware_ok && ota_boot_status.ok();
-    // TODO: 检查 finish_boot() 返回值，避免生命周期转换失败时仍继续启动主循环。
-    (void)application.finish_boot(boot_ok);
+    // ota_boot_status 表示失败报告操作是否成功，不是一次独立的 OTA 健康检查。
+    const bool platform_boot_ok = hardware_ok && ota_boot_status.ok();
+    const Status application_boot_status = application.finish_boot(platform_boot_ok);
+    const bool boot_ok = platform_boot_ok && application_boot_status.ok();
+    if (!application_boot_status.ok()) {
+        ESP_LOGE(kTag, "application boot state transition failed");
+        // 生命周期无法完成启动时，也把待验证 OTA 镜像报告为启动失败。
+        const Status rollback_status = ota_port.finalize_boot(false);
+        if (!rollback_status.ok()) {
+            ESP_LOGE(kTag, "failed to report application boot failure to OTA rollback");
+        }
+    }
     last_activity_us = static_cast<std::uint64_t>(esp_timer_get_time());
     boot_confirmation_due_us = last_activity_us + kBootConfirmationDelayUs; // 稳定运行十秒后确认 OTA 镜像。
     boot_confirmation_pending = boot_ok;
@@ -199,8 +206,8 @@ void initialize() {
             (void)application.handle_idle_timeout(); // Idle 达到自动休眠阈值后启动 Sleep 行为。
         }
         // Deep Sleep 前，Sleep 行为已经把舵机移动到 BSP 定义的安全休眠位置。
-        // TODO(product): 如果未来需要保存“生长位置”，应持久化语义状态并定义恢复策略，
-        // 不能把断电后机械位置或最后一次 PWM 值当成可靠状态。
+        // TODO(product): Grow 进入范围后只持久化最后一次经过安全限制的绝对舵机目标命令，
+        // 不保存轨迹、行为历史或原始 PWM；相对命令不能直接重放，避免重启后重复位移。
         if (lifecycle_state.state == DeviceState::Sleeping &&
             lifecycle_state.power_mode == PowerMode::LightSleep &&
             Config::Power::deep_sleep_enabled && Config::Power::deep_sleep_delay_ms != 0 &&

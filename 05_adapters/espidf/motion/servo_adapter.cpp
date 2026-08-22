@@ -25,10 +25,11 @@ Status EspServoAdapter::initialize() {  // 配置舵机电源使能 GPIO 和 LED
         return Status::failure(ErrorCode::MotionFailure);
     }
     // 初始化时按板级有效电平关闭舵机电源。
-    // TODO: 检查 gpio_set_level() 的返回值，避免电平设置失败却继续初始化。
-    gpio_set_level(
-        static_cast<gpio_num_t>(Config::Gpio::servo_power_enable),
-        Config::Servo::power_enable_active_high ? 0 : 1);
+    if (gpio_set_level(
+            static_cast<gpio_num_t>(Config::Gpio::servo_power_enable),
+            Config::Servo::power_enable_active_high ? 0 : 1) != ESP_OK) {
+        return Status::failure(ErrorCode::MotionFailure);
+    }
 
     ledc_timer_config_t timer{};  // LEDC 定时器提供 PWM 频率和占空比分辨率。
     timer.speed_mode = kSpeedMode;  // ESP32-C3 使用 LEDC 低速模式。
@@ -73,13 +74,18 @@ Status EspServoAdapter::play(MotionPattern pattern, std::uint32_t execution_id) 
     pattern_ = pattern;
     phase_ = 0;
     execution_id_ = execution_id;
+    // 只有电源使能成功后才把本次运动标记为活动状态。
+    if (gpio_set_level(
+            static_cast<gpio_num_t>(Config::Gpio::servo_power_enable),
+            Config::Servo::power_enable_active_high ? 1 : 0) != ESP_OK) {
+        active_ = false;
+        return Status::failure(ErrorCode::MotionFailure);
+    }
     active_ = true;
-    gpio_set_level(
-        static_cast<gpio_num_t>(Config::Gpio::servo_power_enable),
-        Config::Servo::power_enable_active_high ? 1 : 0);
     const Status status = set_pulse(pulse_for_phase());
     if (!status.ok()) {
         active_ = false;
+        (void)stop();
         return status;
     }
     deadline_us_ = static_cast<std::uint64_t>(esp_timer_get_time()) +
@@ -90,11 +96,13 @@ Status EspServoAdapter::play(MotionPattern pattern, std::uint32_t execution_id) 
 Status EspServoAdapter::stop() {
     active_ = false;
     const esp_err_t pwm_status = ledc_stop(kSpeedMode, kChannel, 0);
-    gpio_set_level(
+    // 即使停止 PWM 失败也继续尝试关闭舵机电源，并合并两个硬件操作的结果。
+    const esp_err_t power_status = gpio_set_level(
         static_cast<gpio_num_t>(Config::Gpio::servo_power_enable),
         Config::Servo::power_enable_active_high ? 0 : 1);
-    return pwm_status == ESP_OK ? Status::success()
-                                : Status::failure(ErrorCode::MotionFailure);
+    return pwm_status == ESP_OK && power_status == ESP_OK
+               ? Status::success()
+               : Status::failure(ErrorCode::MotionFailure);
 }
 
 Status EspServoAdapter::poll(std::uint64_t now_us, MotionPollResult& result) {

@@ -255,6 +255,27 @@ void test_runtime_actuator_failure_updates_lifecycle_fault() {
     CHECK_APP(fixture.behavior.snapshot().state == BehaviorRunState::Fault);
 }
 
+void test_unsupported_behavior_restores_idle_lifecycle() {
+    AppFixture fixture;
+    CHECK_APP(fixture.app.finish_boot(true).ok());
+
+    CHECK_APP(fixture.app.request_behavior(static_cast<Behavior>(0xff)).code() ==
+              ErrorCode::Unsupported);
+    CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Idle);
+    CHECK_APP(fixture.behavior.snapshot().state == BehaviorRunState::Idle);
+}
+
+void test_busy_behavior_preserves_running_interaction() {
+    AppFixture fixture;
+    CHECK_APP(fixture.app.finish_boot(true).ok());
+    CHECK_APP(fixture.app.request_behavior(Behavior::Sleep, InterruptionReason::WakeSleep).ok());
+
+    CHECK_APP(fixture.app.request_behavior(Behavior::Happy).code() == ErrorCode::Busy);
+    CHECK_APP(fixture.lifecycle.snapshot().state == DeviceState::Interacting);
+    CHECK_APP(fixture.behavior.snapshot().state == BehaviorRunState::Running);
+    CHECK_APP(fixture.behavior.snapshot().behavior == Behavior::Sleep);
+}
+
 }  // namespace
 
 int run_plant_application_tests() {
@@ -268,6 +289,8 @@ int run_plant_application_tests() {
     test_disconnect_cancels_active_ota_session();
     test_connection_plays_attention_and_wakes_sleeping_plant();
     test_runtime_actuator_failure_updates_lifecycle_fault();
+    test_unsupported_behavior_restores_idle_lifecycle();
+    test_busy_behavior_preserves_running_interaction();
     return failures;
 }
 
