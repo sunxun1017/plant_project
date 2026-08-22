@@ -88,7 +88,9 @@ OTA 分片必须从 offset 0 开始严格连续发送。乱序、重叠、空分
 - Magic、Version、Flags、长度或 CRC 错误的帧直接丢弃，不执行硬件动作。
 - 格式正确但参数非法的命令返回对应 ErrorCode。
 - 接收队列满时 GATT Write 返回资源不足，客户端应退避后重试。
-- OTA 命令在非 `Updating` 状态、普通行为在 `Updating` 状态均返回状态错误。
+- `BeginOta` 允许在 `Idle`、`Interacting`、`Sleeping` 和 `Fault` 发起；进入更新后，分片、
+  完成和取消命令只在相应 `Updating`/OTA 子状态有效。普通行为在 `Updating` 状态返回
+  状态错误。
 - `FinishOta` 成功响应发出后，设备等待约 100 ms 再重启。
 
 ## 7. 当前安全边界

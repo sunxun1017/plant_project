@@ -147,6 +147,11 @@ Status PlantApplication::begin_ota(const OtaImageMetadata& metadata) {
         }
         return ota_.begin(metadata);
     }
+    if (lifecycle.state == DeviceState::Fault) {
+        // Fault 的定义保证机械与振动输出已经安全停止；恢复 OTA 不再依赖故障执行器完成
+        // Sleep 动作。链路加密与绑定仍由 BLE Adapter 在命令进入应用前强制检查。
+        return ota_.begin(metadata);
+    }
     if (lifecycle.state != DeviceState::Idle &&
         lifecycle.state != DeviceState::Interacting) {
         return Status::failure(ErrorCode::InvalidState);

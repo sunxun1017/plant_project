@@ -206,6 +206,36 @@ void test_ota_verification_failure_keeps_current_firmware() {
     CHECK_LOCAL(lifecycle.snapshot().state == DeviceState::Idle);
 }
 
+void test_fault_recovery_ota_cancel_restores_fault() {
+    LifecycleService lifecycle;
+    (void)lifecycle.finish_boot(false);
+    FakeOta port;
+    OtaService ota{lifecycle, port, {0x504C414E, 1, 1}};
+
+    CHECK_LOCAL(ota.begin(valid_metadata()).ok());
+    CHECK_LOCAL(port.begin_count == 1);
+    CHECK_LOCAL(lifecycle.snapshot().state == DeviceState::Updating);
+    CHECK_LOCAL(ota.cancel().ok());
+    CHECK_LOCAL(port.abort_count == 1);
+    CHECK_LOCAL(lifecycle.snapshot().state == DeviceState::Fault);
+}
+
+void test_fault_recovery_ota_write_failure_restores_fault() {
+    LifecycleService lifecycle;
+    (void)lifecycle.finish_boot(false);
+    FakeOta port;
+    port.write_status = Status::failure(ErrorCode::OtaFailure);
+    OtaService ota{lifecycle, port, {0x504C414E, 1, 1}};
+    const std::uint8_t bytes[]{1, 2};
+
+    CHECK_LOCAL(ota.begin(valid_metadata()).ok());
+    CHECK_LOCAL(ota.write_chunk(0, bytes, sizeof(bytes)).code() ==
+                ErrorCode::OtaFailure);
+    CHECK_LOCAL(ota.snapshot().state == OtaState::Failed);
+    CHECK_LOCAL(port.abort_count == 1);
+    CHECK_LOCAL(lifecycle.snapshot().state == DeviceState::Fault);
+}
+
 void test_boot_confirmation_failure_remains_pending_for_retry() {
     LifecycleService lifecycle;
     FakeOta port;
@@ -249,6 +279,8 @@ int run_ota_power_service_tests() {
     test_ota_happy_path();
     test_ota_rejects_unsigned_downgrade_and_wrong_offset();
     test_ota_verification_failure_keeps_current_firmware();
+    test_fault_recovery_ota_cancel_restores_fault();
+    test_fault_recovery_ota_write_failure_restores_fault();
     test_boot_confirmation_failure_remains_pending_for_retry();
     return failures;
 }

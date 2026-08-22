@@ -44,6 +44,11 @@ Status PlantV2Application::tick(std::uint64_t now_us) {
         return base_status;
     }
     update_sleep_sampling();
+    if (lifecycle_.snapshot().state == DeviceState::Updating) {
+        // OTA 期间只保留基础通信和输出安全维护。尤其是从 Fault 恢复时，不再轮询已故障
+        // 的位置反馈，否则同一硬件故障会立即把 Updating 打回 Fault 并中断传输。
+        return Status::success();
+    }
 
     const BehaviorSnapshot behavior = behavior_.snapshot();
     if (behavior.state == BehaviorRunState::Idle) {

@@ -35,6 +35,7 @@ public:
 private:
     DeviceState state_{DeviceState::Booting};
     PowerMode power_mode_{PowerMode::Active};
+    DeviceState update_return_state_{DeviceState::Idle};
 };
 
 }  // namespace plant

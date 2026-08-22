@@ -53,9 +53,14 @@ Status LifecycleService::apply_behavior_outcome(BehaviorOutcome outcome) noexcep
 }
 
 Status LifecycleService::begin_update() noexcept {
-    if (state_ != DeviceState::Idle && state_ != DeviceState::Sleeping) {
+    if (state_ != DeviceState::Idle && state_ != DeviceState::Sleeping &&
+        state_ != DeviceState::Fault) {
         return Status::failure(ErrorCode::InvalidState);
     }
+    // Fault 已满足输出进入安全状态的生命周期不变量。恢复性 OTA 可以直接开始；若升级
+    // 取消或失败，必须回到 Fault，不能把未修复的设备误报为 Idle。
+    update_return_state_ = state_ == DeviceState::Fault ? DeviceState::Fault
+                                                        : DeviceState::Idle;
     state_ = DeviceState::Updating;
     power_mode_ = PowerMode::Active;
     return Status::success();
@@ -65,7 +70,9 @@ Status LifecycleService::cancel_update() noexcept {
     if (state_ != DeviceState::Updating) {
         return Status::failure(ErrorCode::InvalidState);
     }
-    state_ = DeviceState::Idle;
+    state_ = update_return_state_;
+    update_return_state_ = DeviceState::Idle;
+    power_mode_ = PowerMode::Active;
     return Status::success();
 }
 
@@ -75,6 +82,7 @@ Status LifecycleService::finish_update_and_reboot() noexcept {
     }
     state_ = DeviceState::Booting;
     power_mode_ = PowerMode::Active;
+    update_return_state_ = DeviceState::Idle;
     return Status::success();
 }
 
@@ -82,8 +90,9 @@ Status LifecycleService::fail_update(bool recoverable) noexcept {
     if (state_ != DeviceState::Updating) {
         return Status::failure(ErrorCode::InvalidState);
     }
-    state_ = recoverable ? DeviceState::Idle : DeviceState::Fault;
+    state_ = recoverable ? update_return_state_ : DeviceState::Fault;
     power_mode_ = PowerMode::Active;
+    update_return_state_ = DeviceState::Idle;
     return Status::failure(ErrorCode::OtaFailure);
 }
 

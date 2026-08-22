@@ -330,6 +330,21 @@ void test_idle_position_failure_enters_fault() {
     CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Fault);
 }
 
+void test_fault_recovery_ota_isolated_from_failed_motion_polling() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(false).ok());
+    Command command{};
+    command.type = CommandType::BeginOta;
+    command.ota_metadata =
+        OtaImageMetadata{0x504C414E, 2, 0x00020001, 4, true};
+
+    CHECK_V2_APP(fixture.app.handle_command(command).ok());
+    CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Updating);
+    fixture.motion.poll_status = Status::failure(ErrorCode::MotionFailure);
+    CHECK_V2_APP(fixture.app.tick(1000).ok());
+    CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Updating);
+}
+
 }  // namespace
 
 int run_plant_v2_application_tests() {
@@ -339,6 +354,7 @@ int run_plant_v2_application_tests() {
     test_acoustic_mask_includes_actuator_recovery_window();
     test_touch_credit_uses_measured_position_and_closes_motion_loop();
     test_idle_position_failure_enters_fault();
+    test_fault_recovery_ota_isolated_from_failed_motion_polling();
     return failures;
 }
 
