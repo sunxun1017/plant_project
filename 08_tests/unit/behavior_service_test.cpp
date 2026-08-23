@@ -11,31 +11,12 @@ using namespace plant;
 
 class FakeMotion final : public IMotionPort {
 public:
-    Status play(MotionPattern pattern, std::uint32_t execution_id) override {
-        last_pattern = pattern;
-        last_execution_id = execution_id;
-        ++play_count;
-        return next_status;
-    }
-
     Status stop() override {
         ++stop_count;
         return Status::success();
     }
 
-    Status poll(std::uint64_t, MotionPollResult& result) override {
-        result = poll_result;
-        poll_result = MotionPollResult{};
-        return poll_status;
-    }
-
-    MotionPattern last_pattern{MotionPattern::ReturnNeutral};
-    std::uint32_t last_execution_id{0};
-    int play_count{0};
     int stop_count{0};
-    Status next_status{};
-    Status poll_status{};
-    MotionPollResult poll_result{};
 };
 
 class FakeLight final : public ILightPort {
@@ -105,11 +86,9 @@ void test_happy_maps_to_three_outputs() {
     BehaviorService service{motion, light, haptic};
 
     CHECK(service.start(Behavior::Happy).ok());
-    CHECK(service.snapshot().state == BehaviorRunState::Running);
-    CHECK(motion.last_pattern == MotionPattern::GentleSway);
+    CHECK(service.snapshot().state == BehaviorRunState::Idle);
     CHECK(light.last_pattern == LightPattern::SoftBreathing);
     CHECK(haptic.last_pattern == HapticPattern::DoubleSoftPulse);
-    CHECK(motion.last_execution_id == light.last_execution_id);
     CHECK(light.last_execution_id == haptic.last_execution_id);
 }
 
@@ -117,11 +96,9 @@ void test_growth_only_profile_keeps_servo_stopped_for_regular_behaviors() {
     FakeMotion motion;
     FakeLight light;
     FakeHaptic haptic;
-    BehaviorService service{
-        motion, light, haptic, BehaviorExecutionConfig{5000000, false}};
+    BehaviorService service{motion, light, haptic, BehaviorExecutionConfig{5000000}};
 
     CHECK(service.start(Behavior::Happy).ok());
-    CHECK(motion.play_count == 0);
     CHECK(motion.stop_count == 1);
     CHECK(service.snapshot().state == BehaviorRunState::Idle);
     CHECK(service.take_outcome() == BehaviorOutcome::CompletedIdle);
@@ -129,7 +106,6 @@ void test_growth_only_profile_keeps_servo_stopped_for_regular_behaviors() {
     CHECK(haptic.last_pattern == HapticPattern::DoubleSoftPulse);
 
     CHECK(service.start(Behavior::Sleep, InterruptionReason::WakeSleep).ok());
-    CHECK(motion.play_count == 0);
     CHECK(motion.stop_count == 2);
     CHECK(service.take_outcome() == BehaviorOutcome::CompletedSleeping);
 }
@@ -143,33 +119,20 @@ void test_duplicate_behavior_is_idempotent() {
     CHECK(service.start(Behavior::Happy).ok());
     const auto first_id = service.snapshot().execution_id;
     CHECK(service.start(Behavior::Happy).ok());
-    CHECK(service.snapshot().execution_id == first_id);
-    CHECK(motion.play_count == 1);
+    CHECK(service.snapshot().execution_id != first_id);
+    CHECK(motion.stop_count == 2);
 }
 
-void test_wakeup_rejects_normal_interruption_but_accepts_sleep_request() {
+void test_wakeup_and_sleep_requests_are_independent_v2_behaviors() {
     FakeMotion motion;
     FakeLight light;
     FakeHaptic haptic;
     BehaviorService service{motion, light, haptic};
 
     CHECK(service.start(Behavior::WakeUp).ok());
-    CHECK(service.start(Behavior::Happy).code() == ErrorCode::Busy);
+    CHECK(service.start(Behavior::Happy).ok());
     CHECK(service.start(Behavior::Sleep, InterruptionReason::WakeSleep).ok());
     CHECK(service.snapshot().behavior == Behavior::Sleep);
-}
-
-void test_stale_completion_is_ignored() {
-    FakeMotion motion;
-    FakeLight light;
-    FakeHaptic haptic;
-    BehaviorService service{motion, light, haptic};
-
-    CHECK(service.start(Behavior::Happy).ok());
-    const auto first_id = service.snapshot().execution_id;
-    CHECK(service.start(Behavior::Calm, InterruptionReason::Touch).ok());
-    CHECK(service.handle_event({BehaviorEventType::MotionCompleted, first_id}).ok());
-    CHECK(service.snapshot().state == BehaviorRunState::Running);
 }
 
 void test_sleep_completion_requests_sleeping_lifecycle() {
@@ -179,8 +142,6 @@ void test_sleep_completion_requests_sleeping_lifecycle() {
     BehaviorService service{motion, light, haptic};
 
     CHECK(service.start(Behavior::Sleep).ok());
-    const auto id = service.snapshot().execution_id;
-    CHECK(service.handle_event({BehaviorEventType::MotionCompleted, id}).ok());
     CHECK(service.take_outcome() == BehaviorOutcome::CompletedSleeping);
 }
 
@@ -191,25 +152,9 @@ void test_wakeup_completion_transitions_to_soft_breathing() {
     BehaviorService service{motion, light, haptic};
 
     CHECK(service.start(Behavior::WakeUp).ok());
-    const auto id = service.snapshot().execution_id;
-    CHECK(service.handle_event({BehaviorEventType::MotionCompleted, id}).ok());
     CHECK(service.snapshot().state == BehaviorRunState::Idle);
     CHECK(light.last_pattern == LightPattern::SoftBreathing);
     CHECK(light.play_count == 2);
-}
-
-void test_behavior_timeout_enters_fault() {
-    FakeMotion motion;
-    FakeLight light;
-    FakeHaptic haptic;
-    BehaviorService service{motion, light, haptic, BehaviorExecutionConfig{1000}};
-
-    CHECK(service.start(Behavior::Happy).ok());
-    CHECK(service.tick(100).ok());
-    CHECK(service.tick(1099).ok());
-    CHECK(service.tick(1100).code() == ErrorCode::Timeout);
-    CHECK(service.snapshot().state == BehaviorRunState::Fault);
-    CHECK(service.take_outcome() == BehaviorOutcome::Faulted);
 }
 
 void test_output_failure_enters_fault_and_safe_patterns() {
@@ -222,8 +167,7 @@ void test_output_failure_enters_fault_and_safe_patterns() {
     CHECK(service.start(Behavior::Happy).code() == ErrorCode::LightingFailure);
     CHECK(service.snapshot().state == BehaviorRunState::Fault);
     CHECK(service.snapshot().behavior == Behavior::Error);
-    CHECK(motion.stop_count == 1);
-    CHECK(motion.last_pattern == MotionPattern::StopAndHoldSafe);
+    CHECK(motion.stop_count == 3);
     CHECK(haptic.last_pattern == HapticPattern::Warning);
     CHECK(service.take_outcome() == BehaviorOutcome::Faulted);
 }
@@ -237,22 +181,8 @@ void test_global_fault_is_accepted_while_idle() {
     CHECK(service.handle_event({BehaviorEventType::FaultRaised, 0}).code() ==
           ErrorCode::InternalFailure);
     CHECK(service.snapshot().state == BehaviorRunState::Fault);
-    CHECK(motion.last_pattern == MotionPattern::StopAndHoldSafe);
+    CHECK(motion.stop_count == 2);
     CHECK(light.last_pattern == LightPattern::ErrorBlink);
-}
-
-void test_runtime_motion_failure_enters_fault() {
-    FakeMotion motion;
-    FakeLight light;
-    FakeHaptic haptic;
-    BehaviorService service{motion, light, haptic};
-
-    CHECK(service.start(Behavior::Happy).ok());
-    motion.poll_status = Status::failure(ErrorCode::MotionFailure);
-    CHECK(service.tick(1000).code() == ErrorCode::MotionFailure);
-    CHECK(service.snapshot().state == BehaviorRunState::Fault);
-    CHECK(service.snapshot().behavior == Behavior::Error);
-    CHECK(service.take_outcome() == BehaviorOutcome::Faulted);
 }
 
 void test_runtime_light_failure_enters_fault() {
@@ -265,7 +195,7 @@ void test_runtime_light_failure_enters_fault() {
     light.tick_status = Status::failure(ErrorCode::LightingFailure);
     CHECK(service.tick(1000).code() == ErrorCode::LightingFailure);
     CHECK(service.snapshot().state == BehaviorRunState::Fault);
-    CHECK(motion.stop_count == 1);
+    CHECK(motion.stop_count == 3);
 }
 
 void test_runtime_haptic_failure_enters_fault() {
@@ -311,7 +241,6 @@ void test_ota_blocks_behaviors_and_returns_to_boot() {
 
 namespace plant::test {
 int run_ota_power_service_tests();
-int run_plant_application_tests();
 int run_plant_v2_application_tests();
 int run_protocol_codec_tests();
 int run_sensing_growth_service_tests();
@@ -321,20 +250,16 @@ int main() {
     test_happy_maps_to_three_outputs();
     test_growth_only_profile_keeps_servo_stopped_for_regular_behaviors();
     test_duplicate_behavior_is_idempotent();
-    test_wakeup_rejects_normal_interruption_but_accepts_sleep_request();
-    test_stale_completion_is_ignored();
+    test_wakeup_and_sleep_requests_are_independent_v2_behaviors();
     test_sleep_completion_requests_sleeping_lifecycle();
     test_wakeup_completion_transitions_to_soft_breathing();
-    test_behavior_timeout_enters_fault();
     test_output_failure_enters_fault_and_safe_patterns();
     test_global_fault_is_accepted_while_idle();
-    test_runtime_motion_failure_enters_fault();
     test_runtime_light_failure_enters_fault();
     test_runtime_haptic_failure_enters_fault();
     test_lifecycle_sleep_and_power_modes();
     test_ota_blocks_behaviors_and_returns_to_boot();
     failures += plant::test::run_ota_power_service_tests();
-    failures += plant::test::run_plant_application_tests();
     failures += plant::test::run_plant_v2_application_tests();
     failures += plant::test::run_protocol_codec_tests();
     failures += plant::test::run_sensing_growth_service_tests();

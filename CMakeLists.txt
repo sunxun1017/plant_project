@@ -3,10 +3,9 @@ cmake_minimum_required(VERSION 3.16)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(ESP_PLATFORM)
-    set(PLANT_PRODUCT "v1" CACHE STRING "Plant firmware product: v1 or v2")
-    set_property(CACHE PLANT_PRODUCT PROPERTY STRINGS v1 v2)
-    if(NOT PLANT_PRODUCT STREQUAL "v1" AND NOT PLANT_PRODUCT STREQUAL "v2")
-        message(FATAL_ERROR "PLANT_PRODUCT must be v1 or v2")
+    set(PLANT_PRODUCT "v2" CACHE STRING "Plant firmware product")
+    if(NOT PLANT_PRODUCT STREQUAL "v2")
+        message(FATAL_ERROR "This repository builds the V2 Plant product only")
     endif()
     set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/07_products/plant_${PLANT_PRODUCT}")
     include($ENV{IDF_PATH}/tools/cmake/project.cmake)
@@ -46,7 +45,6 @@ if(BUILD_TESTING)
     add_executable(plant_domain_tests
         08_tests/unit/behavior_service_test.cpp
         08_tests/unit/ota_power_service_test.cpp
-        08_tests/integration/plant_application_test.cpp
         08_tests/integration/plant_v2_application_test.cpp
         08_tests/unit/protocol_codec_test.cpp
         08_tests/unit/sensing_growth_service_test.cpp

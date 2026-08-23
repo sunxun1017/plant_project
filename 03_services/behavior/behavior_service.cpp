@@ -41,9 +41,7 @@ Status BehaviorService::start_plan(const BehaviorPlan& plan) {
     outcome_ = BehaviorOutcome::None;
     start_time_initialized_ = false;
 
-    Status status = config_.expressive_motion_enabled
-                        ? motion_.play(plan.motion, execution_id_)
-                        : motion_.stop();
+    Status status = motion_.stop();
     if (!status.ok()) {
         enter_fault();
         return status;
@@ -64,11 +62,9 @@ Status BehaviorService::start_plan(const BehaviorPlan& plan) {
         outcome_ = BehaviorOutcome::Faulted;
     } else {
         state_ = BehaviorRunState::Running;
-        if (!config_.expressive_motion_enabled) {
-            // 仅生长产品的普通表现没有机械阶段；灯光和振动仍由各自非阻塞动画推进，
-            // 生命周期无需等待一个不存在的舵机完成事件。
-            return complete_current();
-        }
+        // V2 的普通表现没有机械阶段；灯光和振动仍由各自非阻塞动画推进，
+        // 生命周期无需等待一个不存在的舵机完成事件。
+        return complete_current();
     }
     return Status::success();
 }
@@ -97,16 +93,6 @@ Status BehaviorService::tick(std::uint64_t now_us) {
         }
     }
 
-    MotionPollResult motion_result{};
-    if (state_ == BehaviorRunState::Running) {
-        // 运动完成事件只由当前行为消费。V2 在行为空闲时可能由 Growth Service
-        // 独占同一运动端口，Behavior Service 不得抢走它的完成事件。
-        const Status motion_status = motion_.poll(now_us, motion_result);
-        if (!motion_status.ok()) {
-            return enter_fault_with(motion_status.code());
-        }
-    }
-
     const Status light_status = light_.tick(now_us);
     if (!light_status.ok()) {
         return enter_fault_with(light_status.code());
@@ -117,10 +103,6 @@ Status BehaviorService::tick(std::uint64_t now_us) {
         return enter_fault_with(haptic_status.code());
     }
 
-    if (motion_result.completed && state_ == BehaviorRunState::Running) {
-        return handle_event(
-            BehaviorEvent{BehaviorEventType::MotionCompleted, motion_result.execution_id});
-    }
     return Status::success();
 }
 
@@ -189,7 +171,7 @@ void BehaviorService::enter_fault() noexcept {
     current_behavior_ = Behavior::Error;
     outcome_ = BehaviorOutcome::Faulted;
     const std::uint32_t fault_id = next_execution_id();
-    (void)motion_.play(MotionPattern::StopAndHoldSafe, fault_id);
+    (void)motion_.stop();
     (void)light_.play(LightPattern::ErrorBlink, fault_id);
     (void)haptic_.play(HapticPattern::Warning, fault_id);
 }

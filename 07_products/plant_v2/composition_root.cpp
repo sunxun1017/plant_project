@@ -1,3 +1,13 @@
+/**
+ * @file composition_root.cpp
+ * @author sunxun (sx2728977548@163.com)
+ * @brief 把抽象硬件接口和具体硬件实现组合起来
+ * @version 0.1
+ * @date 2026-08-23
+ * 
+ * @copyright Copyright (c) 2026
+ * 
+ */
 #include "07_products/plant_v2/composition_root.hpp"
 
 #include <algorithm>
@@ -41,7 +51,7 @@ void signal_system_task(void*, bool from_isr) noexcept {
     if (system_task_handle == nullptr) {
         return;
     }
-    if (from_isr) {
+    if (from_isr) { // 根据当前是否在isr中选择不同的api来唤醒
         BaseType_t higher_priority_task_woken = pdFALSE;
         vTaskNotifyGiveFromISR(system_task_handle, &higher_priority_task_woken);
         portYIELD_FROM_ISR(higher_priority_task_woken);
@@ -49,11 +59,12 @@ void signal_system_task(void*, bool from_isr) noexcept {
     }
     xTaskNotifyGive(system_task_handle);
 }
-
+// TODO: 依赖注入
+// 这里采用了依赖注入的方式 它是products可以知道具体硬件是什么 至于到了service层 才不需要知道具体的硬件 具体方式待定
 V2AdcSampler adc;
 V2I2cBus i2c;
-FeedbackServoAdapter motion{adc};
-EspLedAdapter led_output{EspLedConfig{
+FeedbackServoAdapter motion{adc};   // 位置接口 用的是adc实现
+EspLedAdapter led_output{EspLedConfig{  // 用的是pwm实现
     Board::Gpio::led_red_pwm,
     Board::Gpio::led_green_pwm,
     Board::Gpio::led_blue_pwm,
@@ -102,19 +113,17 @@ EspPowerAdapter power_port{EspPowerConfig{
     Board::Power::minimum_cpu_frequency_mhz,
 }};
 EspOtaAdapter ota_port;
-V2AcousticAdapter acoustic_port{adc};
-V2IlluminationAdapter illumination_port{adc};
+V2AcousticAdapter acoustic_port{adc};   // TODO： 会换成iis
+V2IlluminationAdapter illumination_port{adc};   // TODO： 这个是光照
 Aht21Adapter climate_port{i2c};
-Max17048Adapter battery_port{i2c};
+Max17048Adapter battery_port{i2c};  // TODO： 电池用它肯定不合适
 
+// 这些是服务 服务和具体实现无关 他们只需要知道逻辑即可 用的也是父类
 BehaviorService behavior{
     motion,
     light,
     haptic,
-    BehaviorExecutionConfig{
-        5ULL * 1000ULL * 1000ULL,
-        Product::Behavior::expressive_motion_enabled,
-    }};
+    BehaviorExecutionConfig{5ULL * 1000ULL * 1000ULL}};
 LifecycleService lifecycle;
 PowerService power{
     lifecycle,
@@ -375,15 +384,15 @@ bool position_is_safe_for_deep_sleep() {
 
 void initialize() {
     system_task_handle = xTaskGetCurrentTaskHandle();
-#if !CONFIG_SECURE_SIGNED_ON_UPDATE
+#if !CONFIG_SECURE_SIGNED_ON_UPDATE // TODO： 没有启用ota密码学验证 就会报警告
     ESP_LOGW(
         kTag,
         "development OTA build: cryptographic image verification is disabled");
 #endif
-    boot_started_us = static_cast<std::uint64_t>(esp_timer_get_time());
+    boot_started_us = static_cast<std::uint64_t>(esp_timer_get_time()); // 开机时间
     last_activity_us = boot_started_us;
-    hardware_configuration_ok = initialize_hardware();
-    communication_was_connected = communication.connected();
+    hardware_configuration_ok = initialize_hardware();  // TODO： 根据具体硬件进行匹配
+    communication_was_connected = communication.connected();    // 检测是否连接
     communication_was_secure = ble.secure();
     if (!hardware_configuration_ok) {
         finish_boot(false, boot_started_us);

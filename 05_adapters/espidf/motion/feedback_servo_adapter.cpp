@@ -78,25 +78,15 @@ Status FeedbackServoAdapter::initialize() {
     return Status::success();
 }
 
-Status FeedbackServoAdapter::play(MotionPattern pattern, std::uint32_t execution_id) {
-    if (!initialized_) {
-        return Status::failure(ErrorCode::InvalidState);
-    }
-    if (pattern != MotionPattern::StopAndHoldSafe) {
-        // V2/V3 的闭环舵机只负责 Growth Service 给出的绝对高度；普通产品表现不能再
-        // 通过 IMotionPort 把它移动到回中、摇摆、抬头或休眠固定位置。
-        return Status::failure(ErrorCode::Unsupported);
-    }
-    execution_id_ = execution_id;
-    // 错误行为只停止输出，不清除导致它的反馈/卡滞诊断；下一次成功生长运动才清除。
-    return stop();
-}
-
 Status FeedbackServoAdapter::move_to(
+    MotionPattern pattern,
     std::uint16_t target_position,
     std::uint32_t execution_id) {
     if (!initialized_) {
         return Status::failure(ErrorCode::InvalidState);
+    }
+    if (pattern != MotionPattern::Grow && pattern != MotionPattern::Retract) {
+        return Status::failure(ErrorCode::Unsupported);
     }
     execution_id_ = execution_id;
     return start_target(target_position);

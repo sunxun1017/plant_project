@@ -5,7 +5,6 @@ namespace {
 
 constexpr BehaviorPlan kWakeUp{
     Behavior::WakeUp,
-    MotionPattern::Wake,
     LightPattern::FadeIn,
     HapticPattern::SoftPulse,
     CompletionTarget::Idle,
@@ -14,7 +13,6 @@ constexpr BehaviorPlan kWakeUp{
 
 constexpr BehaviorPlan kHappy{
     Behavior::Happy,
-    MotionPattern::GentleSway,
     LightPattern::SoftBreathing,
     HapticPattern::DoubleSoftPulse,
     CompletionTarget::Idle,
@@ -23,7 +21,6 @@ constexpr BehaviorPlan kHappy{
 
 constexpr BehaviorPlan kAttention{
     Behavior::Attention,
-    MotionPattern::LookUp,
     LightPattern::ShortPulse,
     HapticPattern::SoftPulse,
     CompletionTarget::Idle,
@@ -32,7 +29,6 @@ constexpr BehaviorPlan kAttention{
 
 constexpr BehaviorPlan kCalm{
     Behavior::Calm,
-    MotionPattern::ReturnNeutral,
     LightPattern::SlowBreathing,
     HapticPattern::Off,
     CompletionTarget::Idle,
@@ -41,7 +37,6 @@ constexpr BehaviorPlan kCalm{
 
 constexpr BehaviorPlan kSleep{
     Behavior::Sleep,
-    MotionPattern::MoveToSleepPose,
     LightPattern::FadeOut,
     HapticPattern::SoftPulse,
     CompletionTarget::Sleeping,
@@ -50,7 +45,6 @@ constexpr BehaviorPlan kSleep{
 
 constexpr BehaviorPlan kError{
     Behavior::Error,
-    MotionPattern::StopAndHoldSafe,
     LightPattern::ErrorBlink,
     HapticPattern::Warning,
     CompletionTarget::Fault,
@@ -59,6 +53,14 @@ constexpr BehaviorPlan kError{
 
 }  // namespace
 
+/**
+ * @brief 
+ * 
+ * @param behavior 根据我想让机器人进入什么状态 查看执行方案
+ * @param plan 
+ * @return true 
+ * @return false 
+ */
 bool BehaviorPolicy::try_get_plan(Behavior behavior, BehaviorPlan& plan) noexcept {
     switch (behavior) {
         case Behavior::WakeUp:

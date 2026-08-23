@@ -9,7 +9,6 @@ namespace plant {
 
 struct BehaviorExecutionConfig {
     std::uint64_t timeout_us{5ULL * 1000ULL * 1000ULL};
-    bool expressive_motion_enabled{true};
 };
 
 struct LowPowerConfig {

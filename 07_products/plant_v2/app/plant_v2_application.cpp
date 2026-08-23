@@ -364,7 +364,9 @@ Status PlantV2Application::evaluate_growth(std::uint64_t now_us) {
     }
     growth_execution_id_ = next_growth_execution_id();
     const Status motion_status = motion_.move_to(
-        decision.target_position, growth_execution_id_);
+        decay ? MotionPattern::Retract : MotionPattern::Grow,
+        decision.target_position,
+        growth_execution_id_);
     if (!motion_status.ok()) {
         return enter_fault(motion_status);
     }

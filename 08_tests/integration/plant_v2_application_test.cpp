@@ -20,13 +20,8 @@ int failures = 0;
 
 class V2Motion final : public IPositionMotionPort {
 public:
-    Status play(MotionPattern value, std::uint32_t id) override {
+    Status move_to(MotionPattern value, std::uint16_t target, std::uint32_t id) override {
         pattern = value;
-        execution_id = id;
-        snapshot.moving = true;
-        return Status::success();
-    }
-    Status move_to(std::uint16_t target, std::uint32_t id) override {
         snapshot.target_position = target;
         snapshot.moving = true;
         move_target = target;
@@ -51,8 +46,7 @@ public:
     PositionSnapshot position_snapshot() const noexcept override { return snapshot; }
 
     PositionSnapshot snapshot{400, 400, PositionFeedbackState::Valid};
-    MotionPattern pattern{MotionPattern::ReturnNeutral};
-    std::uint32_t execution_id{0};
+    MotionPattern pattern{MotionPattern::Grow};
     std::uint16_t move_target{0};
     std::uint32_t move_execution_id{0};
     MotionPollResult poll_result{};
@@ -187,7 +181,7 @@ struct V2Fixture {
     V2ClimatePort climate_port;
     V2BatteryPort battery_port;
     BehaviorService behavior{
-        motion, light, haptic, BehaviorExecutionConfig{5000000, false}};
+        motion, light, haptic, BehaviorExecutionConfig{5000000}};
     LifecycleService lifecycle;
     PowerService power{lifecycle, power_port};
     OtaService ota{lifecycle, ota_port, {0x504C414E, 2, 0x00020000}};
@@ -303,6 +297,7 @@ void test_light_sleep_keeps_environment_sampling_and_queues_growth() {
     CHECK_V2_APP(fixture.acoustic_port.enabled);
     CHECK_V2_APP(fixture.app.growth_motion_active());
     CHECK_V2_APP(fixture.motion.move_target == 450);
+    CHECK_V2_APP(fixture.motion.pattern == MotionPattern::Grow);
 }
 
 void test_acoustic_mask_includes_actuator_recovery_window() {
@@ -391,6 +386,7 @@ void test_inactivity_decay_wakes_light_sleep_moves_down_and_returns_to_sleep() {
     CHECK_V2_APP(fixture.app.growth_motion_active());
     CHECK_V2_APP(fixture.app.growth_motion_behavior() == Behavior::Retract);
     CHECK_V2_APP(fixture.motion.move_target == 390);
+    CHECK_V2_APP(fixture.motion.pattern == MotionPattern::Retract);
     CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Interacting);
 
     fixture.motion.snapshot.actual_position = 390;

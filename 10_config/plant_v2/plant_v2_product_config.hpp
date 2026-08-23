@@ -10,7 +10,6 @@ namespace plant::config::v2 {
 struct ProductConfig final {
     struct Behavior final {
         // 闭环舵机只表示生长高度；Happy/Wake/Sleep 等表现只使用灯光与振动。
-        static constexpr bool expressive_motion_enabled = false;
     };
 
     struct Acoustic final {
@@ -95,12 +94,12 @@ struct ProductConfig final {
         static constexpr char device_name[] = "Plant-V2-C3";
         static constexpr std::uint32_t product_id = 0x504C414EU;  // "PLAN"
         static constexpr std::uint32_t hardware_revision = 2;
-        static constexpr std::uint32_t firmware_version = 0x00020004U;
+        static constexpr std::uint32_t firmware_version = 0x00020004U;  // 固件版本
         static constexpr std::size_t ota_chunk_size = 496;
     };
 
     struct Ble final {
-        static constexpr std::uint16_t service_uuid = 0xFFF0;
+        static constexpr std::uint16_t service_uuid = 0xFFF0;   // service uuid
         static constexpr std::uint16_t command_uuid = 0xFFF1;
         static constexpr std::uint16_t response_uuid = 0xFFF2;
         static constexpr std::uint16_t preferred_mtu = 517;

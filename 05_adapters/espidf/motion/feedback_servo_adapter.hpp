@@ -1,3 +1,11 @@
+/*
+ * @Author: sunxun sx2728977548@163.com
+ * @Date: 2026-08-22 18:24:06
+ * @LastEditors: sunxun sx2728977548.com
+ * @LastEditTime: 2026-08-23 12:45:50
+ * @FilePath: /plant_project/05_adapters/espidf/motion/feedback_servo_adapter.hpp
+ * @Description: 
+ */
 #pragma once
 
 #include <cstdint>
@@ -7,13 +15,19 @@
 
 namespace plant {
 
+/**
+ * @brief 继承位置接口 用的是舵机的位置
+ * 
+ */
 class FeedbackServoAdapter final : public IPositionMotionPort {
 public:
     explicit FeedbackServoAdapter(V2AdcSampler& adc) noexcept;
 
     Status initialize();
-    Status play(MotionPattern pattern, std::uint32_t execution_id) override;
-    Status move_to(std::uint16_t target_position, std::uint32_t execution_id) override;
+    Status move_to(
+        MotionPattern pattern,
+        std::uint16_t target_position,
+        std::uint32_t execution_id) override;
     Status stop() override;
     Status poll(std::uint64_t now_us, MotionPollResult& result) override;
     [[nodiscard]] PositionSnapshot position_snapshot() const noexcept override;
