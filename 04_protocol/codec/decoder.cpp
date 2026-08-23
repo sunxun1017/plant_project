@@ -21,6 +21,13 @@ bool no_payload(std::size_t size) noexcept {
     return size == 0;
 }
 
+bool valid_behavior_wire_value(std::uint8_t value) noexcept {
+    return value == static_cast<std::uint8_t>(Behavior::WakeUp) ||
+           value == static_cast<std::uint8_t>(Behavior::Happy) ||
+           value == static_cast<std::uint8_t>(Behavior::Sleep) ||
+           value == static_cast<std::uint8_t>(Behavior::Error);
+}
+
 }  // namespace
 
 std::uint32_t crc32(const std::uint8_t* data, std::size_t size) noexcept {
@@ -75,7 +82,7 @@ Status Decoder::decode(
         case CommandType::SetBehavior:
             // 线上协议只允许普通语义行为；V2 Grow/Retract 由 Growth Service 触发，
             // 不让客户端用枚举值绕过位置闭环、有界排队和安全限幅。
-            if (payload_size != 1 || payload[0] > static_cast<std::uint8_t>(Behavior::Error)) {
+            if (payload_size != 1 || !valid_behavior_wire_value(payload[0])) {
                 return Status::failure(ErrorCode::InvalidArgument);
             }
             command.behavior = static_cast<Behavior>(payload[0]);

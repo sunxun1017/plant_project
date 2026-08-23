@@ -49,10 +49,11 @@ Behavior：
 | --- | --- |
 | 0 | WakeUp |
 | 1 | Happy |
-| 2 | Attention |
-| 3 | Calm |
+| 2 | Reserved |
+| 3 | Reserved |
 | 4 | Sleep |
 | 5 | Error |
+| 255 | None（尚未发生上层行为） |
 
 ## 4. BeginOta Payload
 

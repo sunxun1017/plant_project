@@ -20,7 +20,7 @@ class EspLedAdapter final : public ILightPort {
 public:
     explicit EspLedAdapter(EspLedConfig config) noexcept;
     Status initialize();
-    Status play(LightPattern pattern, std::uint32_t execution_id) override;
+    Status play(LightCue cue, std::uint32_t execution_id) override;
     Status stop() override;
     Status tick(std::uint64_t now_us) override;
     Status set_intensity(std::uint16_t intensity) override;
@@ -30,7 +30,7 @@ private:
 
     EspLedConfig config_;
     bool initialized_{false};
-    LightPattern pattern_{LightPattern::FadeOut};
+    LightCue cue_{LightCue::Default};
     std::uint64_t started_us_{0};
     std::uint16_t intensity_{1000};
     std::uint8_t current_red_{0};

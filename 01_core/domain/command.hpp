@@ -27,7 +27,7 @@ struct Command {
     CommandType type{CommandType::Ping};
     std::uint16_t request_id{0};
     std::uint8_t protocol_version{1};
-    Behavior behavior{Behavior::Calm};
+    Behavior behavior{Behavior::Happy};
     OtaImageMetadata ota_metadata{};
     std::uint32_t ota_offset{0};
     std::array<std::uint8_t, kMaximumOtaChunkSize> ota_data{};

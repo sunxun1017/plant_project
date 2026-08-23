@@ -40,7 +40,7 @@ COMMANDS = {
     "cancel-ota": 0x13,
     "forget-bonds": 0x20,
 }
-BEHAVIORS = {"wake-up": 0, "happy": 1, "attention": 2, "calm": 3, "sleep": 4, "error": 5}
+BEHAVIORS = {"wake-up": 0, "happy": 1, "sleep": 4, "error": 5}
 ERROR_NAMES = (
     "None",
     "Busy",
@@ -62,8 +62,8 @@ POWER_MODES = ("Active", "LightSleep", "DeepSleep")
 BEHAVIOR_NAMES = (
     "WakeUp",
     "Happy",
-    "Attention",
-    "Calm",
+    "Reserved2",
+    "Reserved3",
     "Sleep",
     "Error",
     "Grow",
@@ -189,6 +189,8 @@ def decode_response(frame: bytes) -> Response:
 
 
 def enum_name(names: tuple[str, ...], value: int) -> str:
+    if names is BEHAVIOR_NAMES and value == 0xFF:
+        return "None"
     return names[value] if value < len(names) else f"Unknown({value})"
 
 

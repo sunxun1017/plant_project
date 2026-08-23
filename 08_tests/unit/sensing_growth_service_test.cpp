@@ -14,8 +14,8 @@ int failures = 0;
 
 class FakeLightOutput final : public ILightPort {
 public:
-    Status play(LightPattern pattern, std::uint32_t) override {
-        last_pattern = pattern;
+    Status play(LightCue cue, std::uint32_t) override {
+        last_cue = cue;
         ++play_count;
         return Status::success();
     }
@@ -29,7 +29,7 @@ public:
         return Status::success();
     }
 
-    LightPattern last_pattern{LightPattern::FadeOut};
+    LightCue last_cue{LightCue::Default};
     std::uint16_t intensity{0};
     int play_count{0};
     int stop_count{0};
@@ -306,39 +306,39 @@ void test_light_priority_and_expiry_restore_background() {
     FakeLightOutput output;
     LightArbitrationService service{output};
     CHECK_SENSING(service.request(
-                       LightRequestSource::Sunlight,
-                       LightPattern::SunGlow,
+                       LightLayer::Sunlight,
+                       LightCue::SunlightExposure,
                        500,
                        0)
                        .ok());
     CHECK_SENSING(service.tick(0).ok());
-    CHECK_SENSING(output.last_pattern == LightPattern::SunGlow);
+    CHECK_SENSING(output.last_cue == LightCue::SunlightExposure);
 
     CHECK_SENSING(service.request(
-                       LightRequestSource::Speech,
-                       LightPattern::ListeningBreath,
+                       LightLayer::Speech,
+                       LightCue::Listening,
                        800,
                        10,
                        100)
                        .ok());
     CHECK_SENSING(service.tick(10).ok());
-    CHECK_SENSING(output.last_pattern == LightPattern::ListeningBreath);
+    CHECK_SENSING(output.last_cue == LightCue::Listening);
     CHECK_SENSING(output.intensity == 800);
     CHECK_SENSING(!service.interferes_with_illumination());
     CHECK_SENSING(service.request(
-                       LightRequestSource::Growth,
-                       LightPattern::GrowthRise,
+                       LightLayer::Growth,
+                       LightCue::Growth,
                        1000,
                        20,
                        50)
                        .ok());
     CHECK_SENSING(service.tick(20).ok());
-    CHECK_SENSING(output.last_pattern == LightPattern::GrowthRise);
+    CHECK_SENSING(output.last_cue == LightCue::Growth);
     CHECK_SENSING(service.interferes_with_illumination());
     CHECK_SENSING(service.tick(80).ok());
-    CHECK_SENSING(output.last_pattern == LightPattern::ListeningBreath);
+    CHECK_SENSING(output.last_cue == LightCue::Listening);
     CHECK_SENSING(service.tick(120).ok());
-    CHECK_SENSING(output.last_pattern == LightPattern::SunGlow);
+    CHECK_SENSING(output.last_cue == LightCue::SunlightExposure);
 }
 
 }  // namespace

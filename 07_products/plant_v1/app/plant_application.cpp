@@ -40,7 +40,7 @@ Status PlantApplication::handle_communication_connected() {
         return request_behavior(Behavior::WakeUp, InterruptionReason::WakeSleep);
     }
     if (state == DeviceState::Idle || state == DeviceState::Interacting) {
-        return request_behavior(Behavior::Attention, InterruptionReason::NormalCommand);
+        return request_behavior(Behavior::Happy, InterruptionReason::NormalCommand);
     }
     return Status::failure(ErrorCode::InvalidState);
 }
@@ -109,7 +109,7 @@ Status PlantApplication::wake_for_background_motion() {
     }
     // 后台衰减只恢复运行电源域，不播放 WakeUp 表现；随后由 V2 Growth Service
     // 启动受位置反馈保护的 Retract，并在完成后重新请求轻睡眠。
-    return power_.handle_wake();
+    return power_.wake_from_low_power();
 }
 
 Status PlantApplication::handle_command(const Command& command) {
@@ -151,7 +151,7 @@ Status PlantApplication::begin_ota(const OtaImageMetadata& metadata) {
     const LifecycleSnapshot lifecycle = lifecycle_.snapshot();
     if (lifecycle.state == DeviceState::Sleeping) {
         if (lifecycle.power_mode == PowerMode::LightSleep) {
-            const Status wake_status = power_.handle_wake();
+            const Status wake_status = power_.wake_from_low_power();
             if (!wake_status.ok()) {
                 return wake_status;
             }
@@ -213,7 +213,7 @@ Status PlantApplication::start_behavior(Behavior behavior, InterruptionReason re
     const LifecycleSnapshot before = lifecycle_.snapshot(); // 保存启动行为前的生命周期和功耗模式。
     if (before.state == DeviceState::Sleeping &&
         before.power_mode == PowerMode::LightSleep && behavior == Behavior::WakeUp) {
-        const Status wake_status = power_.handle_wake(); // 先退出轻睡眠，再启动 WakeUp 表现。
+        const Status wake_status = power_.wake_from_low_power(); // 先退出轻睡眠，再启动 WakeUp 表现。
         if (!wake_status.ok()) {
             return wake_status;
         }

@@ -35,18 +35,18 @@ Status EspPowerAdapter::initialize() {
     return Status::success();
 }
 
-Status EspPowerAdapter::enter_light_sleep() {
+Status EspPowerAdapter::allow_light_sleep() {
     if (!initialized_ || active_lock_ == nullptr) {
         return Status::failure(ErrorCode::InvalidState);
     }
-    if (active_lock_held_ && esp_pm_lock_release(active_lock_) != ESP_OK) {
+    if (active_lock_held_ && esp_pm_lock_release(active_lock_) != ESP_OK) { // 
         return Status::failure(ErrorCode::InternalFailure);
     }
     active_lock_held_ = false;
     return Status::success();
 }
 
-Status EspPowerAdapter::leave_light_sleep() {
+Status EspPowerAdapter::restore_active_mode() {
     if (!initialized_ || active_lock_ == nullptr) {
         return Status::failure(ErrorCode::InvalidState);
     }
@@ -56,19 +56,24 @@ Status EspPowerAdapter::leave_light_sleep() {
     active_lock_held_ = true;
     return Status::success();
 }
-
+/**
+ * @brief 进入深度睡眠中 
+ * 
+ * @param timer_wakeup_us 
+ * @return Status 
+ */
 Status EspPowerAdapter::enter_deep_sleep(std::uint64_t timer_wakeup_us) {
-    if (esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL) != ESP_OK) {
+    if (esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL) != ESP_OK) {// 清除之前所有的唤醒源
         return Status::failure(ErrorCode::InternalFailure);
     }
-    const Status wake_status = configure_touch_wakeup(true);
+    const Status wake_status = configure_touch_wakeup(true);    // 配置触摸唤醒源
     if (!wake_status.ok()) {
         return wake_status;
     }
-    if (timer_wakeup_us != 0 && esp_sleep_enable_timer_wakeup(timer_wakeup_us) != ESP_OK) {
+    if (timer_wakeup_us != 0 && esp_sleep_enable_timer_wakeup(timer_wakeup_us) != ESP_OK) { // 定时器唤醒
         return Status::failure(ErrorCode::InternalFailure);
     }
-    esp_deep_sleep_start();
+    esp_deep_sleep_start(); // 开始深度睡眠
     return Status::failure(ErrorCode::InternalFailure);
 }
 

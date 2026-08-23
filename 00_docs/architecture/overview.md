@@ -205,10 +205,6 @@ Happy
 WakeUp
 Sleep
 Grow
-Excited
-Attention
-Calm
-LowBattery
 Error
 ```
 
@@ -238,6 +234,20 @@ PWM Duty
 GPIO
 振动马达电压
 LED Channel
+```
+
+灯光采用两级语义边界：业务层只产生 `LightCue`，仲裁层用 `LightLayer` 管理优先级和
+生命周期，具体 Adapter 再把 Cue 匹配为颜色、波形、周期和占空比。产品行为不应同时
+传递通用动画名和语义效果名，避免同一灯效由两个枚举重复描述。
+
+```text
+TouchAccepted / SunlightExposure / Happy
+                ↓
+           LightCue
+                ↓
+      LightLayer arbitration
+                ↓
+      RGB PWM / WS2812 renderer
 ```
 
 Behavior 只描述产品语义。

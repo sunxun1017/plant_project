@@ -46,6 +46,7 @@ private:
     Status start_plan(const BehaviorPlan& plan);
     Status enter_fault_with(ErrorCode error) noexcept;
     void stop_outputs() noexcept;
+    void stop_non_motion_outputs() noexcept;
     void enter_fault() noexcept;
     Status complete_current();
     [[nodiscard]] std::uint32_t next_execution_id() noexcept;
@@ -56,7 +57,7 @@ private:
     BehaviorExecutionConfig config_;
     BehaviorRunState state_{BehaviorRunState::Idle};
     BehaviorPlan current_plan_{};
-    Behavior current_behavior_{Behavior::Calm};
+    Behavior current_behavior_{Behavior::None};
     std::uint32_t execution_id_{0};
     BehaviorOutcome outcome_{BehaviorOutcome::None};
     std::uint64_t started_us_{0};

@@ -1,0 +1,30 @@
+digraph PlantV2PowerFlow {
+    graph [rankdir=LR, bgcolor="white", pad=0.3, nodesep=0.5, ranksep=0.65, fontname="Noto Sans CJK SC"];
+    node [shape=box, style="rounded,filled", color="#1D4ED8", penwidth=1.2, margin="0.18,0.11", fontname="Noto Sans CJK SC", fontsize=11];
+    edge [color="#64748B", penwidth=1.25, arrowsize=0.7, fontname="Noto Sans CJK SC", fontsize=9];
+
+    boot [label="Booting\n关键自检尚未完成", fillcolor="#DBEAFE"];
+    idle [label="Idle\n可接收交互、传感奖励与 OTA", fillcolor="#DCFCE7", color="#15803D"];
+    interacting [label="Interacting\n前台行为或 Grow/Retract 正在处理", fillcolor="#EDE9FE", color="#6D28D9"];
+    sleeping [label="Sleeping + LightSleep\n释放 PM 锁后，CPU 空闲时\nESP-IDF 自动进入轻睡眠", fillcolor="#DBEAFE"];
+    updating [label="Updating\nOTA 传输/校验期间\n跳过位置与传感器轮询", fillcolor="#FCE7F3", color="#BE185D"];
+    updateReturn [label="取消或可恢复失败\n恢复 Updating 之前的状态", fillcolor="#F1F5F9", color="#64748B"];
+    fault [label="Fault\n执行器安全停止\n允许恢复性 OTA", fillcolor="#FEE2E2", color="#B91C1C"];
+
+    boot -> idle [label="finish_boot(true)"];
+    boot -> fault [label="finish_boot(false)\n或 boot confirmation 失败", color="#DC2626"];
+    idle -> interacting [label="开始行为或生长"];
+    interacting -> idle [label="完成 / Stop"];
+    interacting -> sleeping [label="Sleep 完成"];
+    sleeping -> idle [label="WakeUp 或后台 Retract 唤醒"];
+    idle -> updating [label="BeginOta"];
+    interacting -> updating [label="先完成 Sleep 后 BeginOta"];
+    sleeping -> updating [label="先恢复主动电源域"];
+    updating -> updateReturn [label="Cancel / recoverable fail"];
+    updateReturn -> idle [label="原为 Idle / Sleeping"];
+    updateReturn -> fault [label="原为 Fault", color="#DC2626"];
+    updating -> boot [label="FinishOta 后重启"];
+    idle -> fault [label="故障", color="#DC2626"];
+    interacting -> fault [label="故障", color="#DC2626"];
+    fault -> updating [label="BeginOta：恢复性升级"];
+}

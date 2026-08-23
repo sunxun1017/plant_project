@@ -194,11 +194,14 @@ void BehaviorService::happy()
 ```cpp
 void BehaviorService::happy()
 {
-    motion_.play(MotionPattern::GentleSway);
-    lighting_.play(LightPattern::SoftBreathing);
+    motion_.stop();
+    lighting_.play(LightCue::Happy);
     haptic_.play(HapticPattern::DoubleSoftPulse);
 }
 ```
+
+灯光 Port 只接受产品语义 Cue。`Breathing`、RGB 颜色、PWM 占空比和具体动画周期属于
+Adapter 内部的渲染匹配，不得从 Service 或 Port 向下泄漏。
 
 ---
 
@@ -428,8 +431,6 @@ Happy
 Grow
 Sleep
 WakeUp
-Attention
-Calm
 ```
 
 Behavior 不允许包含：
@@ -615,4 +616,3 @@ if (status == Status::Timeout)
 即：
 
 > **依赖指向策略，而不是指向实现细节。**
-

@@ -61,46 +61,40 @@ Status EspLedAdapter::initialize() {  // RGB 三个通道共享一个 LEDC 定�
     return stop();
 }
 
-Status EspLedAdapter::play(LightPattern pattern, std::uint32_t) {
+Status EspLedAdapter::play(LightCue cue, std::uint32_t) {
     if (!initialized_) {
         return Status::failure(ErrorCode::InvalidState);
     }
-    if (pattern == LightPattern::FadeOut) {
+    if (cue == LightCue::Sleep) {
         fade_start_red_ = current_red_;
         fade_start_green_ = current_green_;
         fade_start_blue_ = current_blue_;
     }
-    pattern_ = pattern;
+    cue_ = cue;
     started_us_ = static_cast<std::uint64_t>(esp_timer_get_time());
     return tick(started_us_);
 }
 
 Status EspLedAdapter::stop() {
-    pattern_ = LightPattern::FadeOut;
+    cue_ = LightCue::Default;
     started_us_ = 0;
     return set_rgb(0, 0, 0);
 }
 
 Status EspLedAdapter::tick(std::uint64_t now_us) {
     const std::uint64_t elapsed = now_us - started_us_;
-    switch (pattern_) {
-        case LightPattern::FadeIn: {
+    switch (cue_) {
+        case LightCue::WakeUp: {
             const auto duty = static_cast<std::uint8_t>(
                 elapsed >= 600000 ? config_.maximum_duty
                                   : elapsed * config_.maximum_duty / 600000);
             return set_rgb(0, duty, duty / 3);
         }
-        case LightPattern::SoftBreathing: {
+        case LightCue::Happy: {
             const auto duty = triangle(elapsed, 2400000, config_.maximum_duty);
             return set_rgb(0, duty, duty / 4);
         }
-        case LightPattern::ShortPulse:
-            return set_rgb(0, elapsed < 250000 ? config_.maximum_duty : 0, 0);
-        case LightPattern::SlowBreathing: {
-            const auto duty = triangle(elapsed, 4000000, config_.maximum_duty);
-            return set_rgb(0, duty / 2, duty / 5);
-        }
-        case LightPattern::FadeOut: {
+        case LightCue::Sleep: {
             constexpr std::uint64_t duration_us = 600000;
             const std::uint64_t remaining =
                 elapsed >= duration_us ? 0 : duration_us - elapsed;
@@ -109,42 +103,44 @@ Status EspLedAdapter::tick(std::uint64_t now_us) {
                 static_cast<std::uint8_t>(fade_start_green_ * remaining / duration_us),
                 static_cast<std::uint8_t>(fade_start_blue_ * remaining / duration_us));
         }
-        case LightPattern::ErrorBlink:
+        case LightCue::Error:
             return set_rgb(
                 (elapsed / 500000) % 2 == 0 ? config_.maximum_duty : 0, 0, 0);
-        case LightPattern::TouchPulse:
+        case LightCue::TouchAccepted:
             return set_rgb(0, elapsed < 350000 ? config_.maximum_duty : 0, 0);
-        case LightPattern::ListeningBreath: {
+        case LightCue::Listening: {
             const std::uint32_t scale = 250U + intensity_ * 750U / 1000U;
             const auto duty = static_cast<std::uint8_t>(
                 triangle(elapsed, 1800000, config_.maximum_duty) * scale / 1000U);
             return set_rgb(0, duty, duty);
         }
-        case LightPattern::SunGlow: {
+        case LightCue::SunlightExposure: {
             const std::uint32_t scale = 300U + intensity_ * 700U / 1000U;
             const auto duty = static_cast<std::uint8_t>(
                 triangle(elapsed, 3600000, config_.maximum_duty) * scale / 1000U);
             return set_rgb(duty, static_cast<std::uint8_t>(duty * 2U / 3U), 0);
         }
-        case LightPattern::ComfortGlow: {
+        case LightCue::Comfort: {
             const auto duty = static_cast<std::uint8_t>(
                 elapsed >= 800000 ? config_.maximum_duty
                                   : elapsed * config_.maximum_duty / 800000);
             return set_rgb(duty, duty / 2U, duty / 2U);
         }
-        case LightPattern::GrowthRise: {
+        case LightCue::Growth: {
             const std::uint64_t phase = std::min<std::uint64_t>(elapsed, 1000000);
             const auto warm = static_cast<std::uint8_t>(
                 phase * config_.maximum_duty / 1000000ULL);
             return set_rgb(warm, config_.maximum_duty, warm / 2U);
         }
-        case LightPattern::GrowthLimit: {
+        case LightCue::GrowthLimit: {
             const bool on = elapsed < 120000 || (elapsed >= 220000 && elapsed < 340000);
             return set_rgb(
                 on ? config_.maximum_duty : 0,
                 on ? config_.maximum_duty : 0,
                 on ? config_.maximum_duty / 2U : 0);
         }
+        case LightCue::Default:
+            return set_rgb(0, 0, 0);
     }
     return Status::failure(ErrorCode::LightingFailure);
 }
@@ -155,6 +151,12 @@ Status EspLedAdapter::set_intensity(std::uint16_t intensity) {
 }
 
 Status EspLedAdapter::set_rgb(std::uint8_t red, std::uint8_t green, std::uint8_t blue) {
+    // Avoid rewriting all LEDC channels when a low-frequency animation produces the
+    // same quantized duty as the previous tick. This keeps the 20 ms system loop cheap
+    // without changing the semantic cue or animation timing.
+    if (current_red_ == red && current_green_ == green && current_blue_ == blue) {
+        return Status::success();
+    }
     const std::uint32_t values[]{red, green, blue};
     const ledc_channel_t channels[]{kRed, kGreen, kBlue};
     for (int index = 0; index < 3; ++index) {

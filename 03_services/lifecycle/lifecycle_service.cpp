@@ -7,7 +7,7 @@ LifecycleSnapshot LifecycleService::snapshot() const noexcept {
 }
 
 Status LifecycleService::finish_boot(bool self_test_passed) noexcept {
-    if (state_ != DeviceState::Booting) {
+    if (state_ != DeviceState::Booting) {   // 判断上一个状态是否是booting
         return Status::failure(ErrorCode::InvalidState);
     }
     power_mode_ = PowerMode::Active;
@@ -96,7 +96,7 @@ Status LifecycleService::fail_update(bool recoverable) noexcept {
     return Status::failure(ErrorCode::OtaFailure);
 }
 
-Status LifecycleService::enter_light_sleep() noexcept {
+Status LifecycleService::enter_light_sleep_mode() noexcept {
     if (state_ != DeviceState::Sleeping) {
         return Status::failure(ErrorCode::InvalidState);
     }
@@ -104,7 +104,7 @@ Status LifecycleService::enter_light_sleep() noexcept {
     return Status::success();
 }
 
-Status LifecycleService::enter_deep_sleep() noexcept {
+Status LifecycleService::enter_deep_sleep_mode() noexcept {
     if (state_ != DeviceState::Sleeping) {
         return Status::failure(ErrorCode::InvalidState);
     }
@@ -112,7 +112,7 @@ Status LifecycleService::enter_deep_sleep() noexcept {
     return Status::success();
 }
 
-Status LifecycleService::leave_low_power() noexcept {
+Status LifecycleService::restore_active_power_mode() noexcept {
     if (state_ != DeviceState::Sleeping) {
         return Status::failure(ErrorCode::InvalidState);
     }

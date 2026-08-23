@@ -317,39 +317,43 @@ void EspBleAdapter::host_task(void*) {
 }
 
 Status EspBleAdapter::start_advertising(AdvertisingMode mode) {
-    std::uint8_t address_type = 0;
-    if (ble_hs_id_infer_auto(0, &address_type) != 0) {
+    std::uint8_t address_type = 0;  // ble地址
+    if (ble_hs_id_infer_auto(0, &address_type) != 0) {  // TODO： 地址类型 当前 public mac 不需要隐私
         return Status::failure(ErrorCode::InternalFailure);
     }
 
-    ble_hs_adv_fields fields{};
-    fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+    ble_hs_adv_fields fields{};                                                // 广播内容
+    /**
+     * @par BLE_HS_ADV_F_DISC_GEN: 普通可发现
+     *      BLE_HS_ADV_F_BREDR_UNSUP： 不支持传统蓝牙
+     */
+    fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;           
     fields.name = reinterpret_cast<std::uint8_t*>(
         const_cast<char*>(config_.device_name));
     fields.name_len = std::strlen(config_.device_name);
-    fields.name_is_complete = 1;
-    fields.uuids16 = &service_uuid;
+    fields.name_is_complete = 1;    // 表示是否完整
+    fields.uuids16 = &service_uuid;                                             // uuid在哪里设置的呢
     fields.num_uuids16 = 1;
     fields.uuids16_is_complete = 1;
-    if (ble_gap_adv_set_fields(&fields) != 0) {
+    if (ble_gap_adv_set_fields(&fields) != 0) {                     // TODO： 设置广播数据 广播的数据
         return Status::failure(ErrorCode::InternalFailure);
     }
 
     ble_gap_adv_params parameters{};
-    parameters.conn_mode = BLE_GAP_CONN_MODE_UND;
-    parameters.disc_mode = BLE_GAP_DISC_MODE_GEN;
+    parameters.conn_mode = BLE_GAP_CONN_MODE_UND;                               // UND undirected 不指定连接对象 任何手机都可以连接
+    parameters.disc_mode = BLE_GAP_DISC_MODE_GEN;                               // 发现模式 普通可发现
     const bool fast = mode == AdvertisingMode::Fast;
-    parameters.itvl_min = fast ? config_.fast_advertising_interval_min_units
-                               : config_.slow_advertising_interval_min_units;
+    parameters.itvl_min = fast ? config_.fast_advertising_interval_min_units    // 设置广播间隔 不是固定值
+                               : config_.slow_advertising_interval_min_units;   // TODO： 测试可以调整
     parameters.itvl_max = fast ? config_.fast_advertising_interval_max_units
                                : config_.slow_advertising_interval_max_units;
     const std::int32_t duration_ms =
-        fast && config_.fast_advertising_duration_ms != 0
+        fast && config_.fast_advertising_duration_ms != 0                       // 快速广播有时间限制
             ? static_cast<std::int32_t>(config_.fast_advertising_duration_ms)
             : BLE_HS_FOREVER;
     return ble_gap_adv_start(
                address_type,
-               nullptr,
+               nullptr,                                             // 如果要定向广播 就需要填它
                duration_ms,
                &parameters,
                gap_event,

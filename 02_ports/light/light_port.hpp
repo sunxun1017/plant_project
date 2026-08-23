@@ -3,14 +3,14 @@
 #include <cstdint>
 
 #include "01_core/common/status.hpp"
-#include "01_core/domain/behavior.hpp"
+#include "01_core/domain/light.hpp"
 
 namespace plant {
 
 class ILightPort {
 public:
     virtual ~ILightPort() = default;
-    virtual Status play(LightPattern pattern, std::uint32_t execution_id) = 0;
+    virtual Status play(LightCue cue, std::uint32_t execution_id) = 0;
     virtual Status stop() = 0;
     virtual Status tick(std::uint64_t now_us) = 0;
     // V2 动态灯效使用 0..1000 的低频强度；V1 Adapter 可忽略并返回 Unsupported。

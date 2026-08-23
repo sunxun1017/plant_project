@@ -21,8 +21,8 @@ public:
 
 class FakeLight final : public ILightPort {
 public:
-    Status play(LightPattern pattern, std::uint32_t execution_id) override {
-        last_pattern = pattern;
+    Status play(LightCue cue, std::uint32_t execution_id) override {
+        last_cue = cue;
         last_execution_id = execution_id;
         ++play_count;
         return next_status;
@@ -35,7 +35,7 @@ public:
 
     Status tick(std::uint64_t) override { return tick_status; }
 
-    LightPattern last_pattern{LightPattern::SlowBreathing};
+    LightCue last_cue{LightCue::Happy};
     std::uint32_t last_execution_id{0};
     int play_count{0};
     int stop_count{0};
@@ -87,9 +87,20 @@ void test_happy_maps_to_three_outputs() {
 
     CHECK(service.start(Behavior::Happy).ok());
     CHECK(service.snapshot().state == BehaviorRunState::Idle);
-    CHECK(light.last_pattern == LightPattern::SoftBreathing);
+    CHECK(light.last_cue == LightCue::Happy);
     CHECK(haptic.last_pattern == HapticPattern::DoubleSoftPulse);
     CHECK(light.last_execution_id == haptic.last_execution_id);
+}
+
+void test_behavior_starts_without_a_previous_behavior() {
+    FakeMotion motion;
+    FakeLight light;
+    FakeHaptic haptic;
+    BehaviorService service{motion, light, haptic};
+
+    CHECK(service.snapshot().behavior == Behavior::None);
+    CHECK(service.start(Behavior::Happy).ok());
+    CHECK(service.snapshot().behavior == Behavior::Happy);
 }
 
 void test_growth_only_profile_keeps_servo_stopped_for_regular_behaviors() {
@@ -102,7 +113,7 @@ void test_growth_only_profile_keeps_servo_stopped_for_regular_behaviors() {
     CHECK(motion.stop_count == 1);
     CHECK(service.snapshot().state == BehaviorRunState::Idle);
     CHECK(service.take_outcome() == BehaviorOutcome::CompletedIdle);
-    CHECK(light.last_pattern == LightPattern::SoftBreathing);
+    CHECK(light.last_cue == LightCue::Happy);
     CHECK(haptic.last_pattern == HapticPattern::DoubleSoftPulse);
 
     CHECK(service.start(Behavior::Sleep, InterruptionReason::WakeSleep).ok());
@@ -145,7 +156,7 @@ void test_sleep_completion_requests_sleeping_lifecycle() {
     CHECK(service.take_outcome() == BehaviorOutcome::CompletedSleeping);
 }
 
-void test_wakeup_completion_transitions_to_soft_breathing() {
+void test_wakeup_keeps_its_own_light_cue() {
     FakeMotion motion;
     FakeLight light;
     FakeHaptic haptic;
@@ -153,8 +164,8 @@ void test_wakeup_completion_transitions_to_soft_breathing() {
 
     CHECK(service.start(Behavior::WakeUp).ok());
     CHECK(service.snapshot().state == BehaviorRunState::Idle);
-    CHECK(light.last_pattern == LightPattern::SoftBreathing);
-    CHECK(light.play_count == 2);
+    CHECK(light.last_cue == LightCue::WakeUp);
+    CHECK(light.play_count == 1);
 }
 
 void test_output_failure_enters_fault_and_safe_patterns() {
@@ -167,7 +178,7 @@ void test_output_failure_enters_fault_and_safe_patterns() {
     CHECK(service.start(Behavior::Happy).code() == ErrorCode::LightingFailure);
     CHECK(service.snapshot().state == BehaviorRunState::Fault);
     CHECK(service.snapshot().behavior == Behavior::Error);
-    CHECK(motion.stop_count == 3);
+    CHECK(motion.stop_count == 2);
     CHECK(haptic.last_pattern == HapticPattern::Warning);
     CHECK(service.take_outcome() == BehaviorOutcome::Faulted);
 }
@@ -181,8 +192,8 @@ void test_global_fault_is_accepted_while_idle() {
     CHECK(service.handle_event({BehaviorEventType::FaultRaised, 0}).code() ==
           ErrorCode::InternalFailure);
     CHECK(service.snapshot().state == BehaviorRunState::Fault);
-    CHECK(motion.stop_count == 2);
-    CHECK(light.last_pattern == LightPattern::ErrorBlink);
+    CHECK(motion.stop_count == 1);
+    CHECK(light.last_cue == LightCue::Error);
 }
 
 void test_runtime_light_failure_enters_fault() {
@@ -195,7 +206,7 @@ void test_runtime_light_failure_enters_fault() {
     light.tick_status = Status::failure(ErrorCode::LightingFailure);
     CHECK(service.tick(1000).code() == ErrorCode::LightingFailure);
     CHECK(service.snapshot().state == BehaviorRunState::Fault);
-    CHECK(motion.stop_count == 3);
+    CHECK(motion.stop_count == 2);
 }
 
 void test_runtime_haptic_failure_enters_fault() {
@@ -218,9 +229,9 @@ void test_lifecycle_sleep_and_power_modes() {
     CHECK(lifecycle.begin_behavior(Behavior::Sleep).ok());
     CHECK(lifecycle.apply_behavior_outcome(BehaviorOutcome::CompletedSleeping).ok());
     CHECK(lifecycle.snapshot().state == DeviceState::Sleeping);
-    CHECK(lifecycle.enter_light_sleep().ok());
+    CHECK(lifecycle.enter_light_sleep_mode().ok());
     CHECK(lifecycle.snapshot().power_mode == PowerMode::LightSleep);
-    CHECK(lifecycle.enter_deep_sleep().ok());
+    CHECK(lifecycle.enter_deep_sleep_mode().ok());
     CHECK(lifecycle.snapshot().power_mode == PowerMode::DeepSleep);
     CHECK(lifecycle.wake(true).ok());
     CHECK(lifecycle.snapshot().state == DeviceState::Booting);
@@ -232,7 +243,7 @@ void test_ota_blocks_behaviors_and_returns_to_boot() {
     CHECK(lifecycle.begin_update().ok());
     CHECK(lifecycle.snapshot().state == DeviceState::Updating);
     CHECK(lifecycle.begin_behavior(Behavior::Happy).code() == ErrorCode::InvalidState);
-    CHECK(lifecycle.enter_deep_sleep().code() == ErrorCode::InvalidState);
+    CHECK(lifecycle.enter_deep_sleep_mode().code() == ErrorCode::InvalidState);
     CHECK(lifecycle.finish_update_and_reboot().ok());
     CHECK(lifecycle.snapshot().state == DeviceState::Booting);
 }
@@ -248,11 +259,12 @@ int run_sensing_growth_service_tests();
 
 int main() {
     test_happy_maps_to_three_outputs();
+    test_behavior_starts_without_a_previous_behavior();
     test_growth_only_profile_keeps_servo_stopped_for_regular_behaviors();
     test_duplicate_behavior_is_idempotent();
     test_wakeup_and_sleep_requests_are_independent_v2_behaviors();
     test_sleep_completion_requests_sleeping_lifecycle();
-    test_wakeup_completion_transitions_to_soft_breathing();
+    test_wakeup_keeps_its_own_light_cue();
     test_output_failure_enters_fault_and_safe_patterns();
     test_global_fault_is_accepted_while_idle();
     test_runtime_light_failure_enters_fault();

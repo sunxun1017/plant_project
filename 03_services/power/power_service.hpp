@@ -16,7 +16,7 @@ public:
 
     Status request_light_sleep();
     Status request_deep_sleep(const PowerConditions& conditions);
-    Status handle_wake();
+    Status wake_from_low_power();
 
     [[nodiscard]] WakeSource last_wake_source() const noexcept;
     [[nodiscard]] const LowPowerConfig& config() const noexcept;

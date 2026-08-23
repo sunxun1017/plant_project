@@ -18,7 +18,7 @@ struct ResponseMessage {
     ErrorCode status{ErrorCode::None};
     DeviceState device_state{DeviceState::Booting};
     PowerMode power_mode{PowerMode::Active};
-    Behavior behavior{Behavior::Calm};
+    Behavior behavior{Behavior::None};
     OtaState ota_state{OtaState::Idle};
     std::uint32_t ota_received_bytes{0};
     std::uint32_t firmware_version{0};

@@ -194,7 +194,7 @@ void initialize() {
         const bool communication_connected = communication.connected(); // 查询本轮 BLE 连接状态。
         if (!communication_was_connected && communication_connected) { // 检测 false -> true 连接边沿。
             last_activity_us = now_us; // 新连接计为一次用户活动。
-            (void)application.handle_communication_connected(); // 根据生命周期触发 WakeUp 或 Attention。
+            (void)application.handle_communication_connected(); // 根据生命周期触发 WakeUp 或 Happy。
         }
         if (communication_was_connected && !communication_connected) { // 检测 true -> false 断开边沿。
             // 断开时仅在 OTA 已排队、接收或验证过程中取消 OTA。

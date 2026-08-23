@@ -1,0 +1,43 @@
+digraph PlantV2BehaviorFlow {
+    graph [rankdir=TB, bgcolor="white", pad=0.3, nodesep=0.45, ranksep=0.5, fontname="Noto Sans CJK SC"];
+    node [shape=box, style="rounded,filled", color="#5B21B6", penwidth=1.15, margin="0.16,0.10", fontname="Noto Sans CJK SC", fontsize=11];
+    edge [color="#64748B", penwidth=1.2, arrowsize=0.7, fontname="Noto Sans CJK SC", fontsize=9];
+
+    subgraph cluster_input {
+        label="触发源";
+        color="#DDD6FE";
+        style="rounded";
+        touch [label="触摸\n单击 Happy\n长按 Sleep / WakeUp", fillcolor="#F5F3FF"];
+        ble [label="BLE 命令\nSetBehavior / StopBehavior", fillcolor="#F5F3FF"];
+        connected [label="BLE 加密完成\nIdle: Happy\nSleeping: WakeUp", fillcolor="#F5F3FF"];
+        timeout [label="Idle 超时\nSleep", fillcolor="#F5F3FF"];
+    }
+
+    gate [shape=diamond, label="允许启动？\n非 Booting / Fault / Updating\n且中断规则允许", fillcolor="#FFF7ED", color="#B45309"];
+    lifecycleBegin [label="Lifecycle.begin_behavior\n-> Interacting", fillcolor="#EDE9FE"];
+    plan [label="BehaviorPolicy 映射\nWakeUp / Happy / Sleep / Error\n-> LightCue + HapticPattern", fillcolor="#EDE9FE"];
+    execute [label="BehaviorService.start_plan\n停止舵机，生成 execution_id\n启动非阻塞灯光与振动", fillcolor="#EDE9FE"];
+    outputTick [label="每个 tick\n灯光仲裁与振动动画继续推进", fillcolor="#F8FAFC", color="#64748B"];
+    complete [label="普通行为立即完成\nLifecycle -> Idle", fillcolor="#DCFCE7", color="#15803D"];
+    sleeping [label="Sleep 完成\nLifecycle -> Sleeping\n允许 Light Sleep", fillcolor="#DBEAFE", color="#1D4ED8"];
+    wake [label="WakeUp 前\n恢复主动电源域\n完成 -> Idle", fillcolor="#DBEAFE", color="#1D4ED8"];
+    rejected [label="保持原状态\n返回 Busy / InvalidState", fillcolor="#F1F5F9", color="#64748B"];
+    fault [label="输出失败、超时或 FaultRaised\n停止舵机/灯光/振动\nError + Warning；-> Fault", fillcolor="#FEE2E2", color="#B91C1C"];
+
+    {rank=same; touch; ble; connected; timeout;}
+    touch -> gate;
+    ble -> gate;
+    connected -> gate;
+    timeout -> gate;
+    gate -> rejected [label="否"];
+    gate -> lifecycleBegin [label="是"];
+    lifecycleBegin -> plan -> execute;
+    execute -> wake [label="WakeUp"];
+    execute -> complete [label="Happy"];
+    execute -> sleeping [label="Sleep"];
+    execute -> fault [label="Error / 启动失败", color="#DC2626"];
+    wake -> outputTick;
+    complete -> outputTick;
+    sleeping -> outputTick;
+    outputTick -> fault [label="tick 失败", color="#DC2626"];
+}

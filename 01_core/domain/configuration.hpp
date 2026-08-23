@@ -12,7 +12,7 @@ struct BehaviorExecutionConfig {
 };
 
 struct LowPowerConfig {
-    bool deep_sleep_enabled{true};
+    bool deep_sleep_enabled{false};
     std::uint32_t deep_sleep_delay_ms{30U * 60U * 1000U};
     std::uint64_t timer_wakeup_us{0};
 };

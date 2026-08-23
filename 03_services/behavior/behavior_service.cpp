@@ -17,21 +17,21 @@ Status BehaviorService::start(Behavior behavior, InterruptionReason reason) {
         return Status::failure(ErrorCode::Unsupported);
     }
 
-    if (state_ == BehaviorRunState::Fault && behavior != Behavior::Error) {
+    if (state_ == BehaviorRunState::Fault && behavior != Behavior::Error) { // 如果当前已经有故障 并且下一个行为不是故障 那么就直接推出吧 
         return Status::failure(ErrorCode::InvalidState);
     }
 
-    if (state_ == BehaviorRunState::Running) {
+    if (state_ == BehaviorRunState::Running) {  // 如果是正常 
         if (behavior == current_behavior_) {
-            return Status::success();
+            return Status::success();   // 上层行为不变 不做任何处理
         }
-        if (!BehaviorPolicy::can_interrupt(current_plan_, behavior, reason)) {
-            return Status::failure(ErrorCode::Busy);
+        if (!BehaviorPolicy::can_interrupt(current_plan_, behavior, reason)) {  // 判断是否可以打断
+            return Status::failure(ErrorCode::Busy);    // 直接返回比较忙
         }
-        stop_outputs();
+        stop_non_motion_outputs(); // 停止当前的灯光和振动
     }
 
-    return start_plan(plan);
+    return start_plan(plan);    // 执行新的
 }
 
 Status BehaviorService::start_plan(const BehaviorPlan& plan) {
@@ -41,7 +41,7 @@ Status BehaviorService::start_plan(const BehaviorPlan& plan) {
     outcome_ = BehaviorOutcome::None;
     start_time_initialized_ = false;
 
-    Status status = motion_.stop();
+    Status status = motion_.stop();// TODO： 不懂为什么这样分开
     if (!status.ok()) {
         enter_fault();
         return status;
@@ -57,11 +57,11 @@ Status BehaviorService::start_plan(const BehaviorPlan& plan) {
         return status;
     }
 
-    if (plan.completion == CompletionTarget::Fault) {
+    if (plan.completion == CompletionTarget::Fault) {   // 如果计划的完成目标是fault设备进入故障状态
         state_ = BehaviorRunState::Fault;
         outcome_ = BehaviorOutcome::Faulted;
     } else {
-        state_ = BehaviorRunState::Running;
+        state_ = BehaviorRunState::Running; // 否则还是正常
         // V2 的普通表现没有机械阶段；灯光和振动仍由各自非阻塞动画推进，
         // 生命周期无需等待一个不存在的舵机完成事件。
         return complete_current();
@@ -160,6 +160,10 @@ BehaviorOutcome BehaviorService::take_outcome() noexcept {
 
 void BehaviorService::stop_outputs() noexcept {
     (void)motion_.stop();
+    stop_non_motion_outputs();
+}
+
+void BehaviorService::stop_non_motion_outputs() noexcept {
     (void)light_.stop();
     (void)haptic_.stop();
 }
@@ -171,24 +175,17 @@ void BehaviorService::enter_fault() noexcept {
     current_behavior_ = Behavior::Error;
     outcome_ = BehaviorOutcome::Faulted;
     const std::uint32_t fault_id = next_execution_id();
-    (void)motion_.stop();
-    (void)light_.play(LightPattern::ErrorBlink, fault_id);
+    (void)light_.play(LightCue::Error, fault_id);
     (void)haptic_.play(HapticPattern::Warning, fault_id);
 }
 
 Status BehaviorService::complete_current() {
-    if (current_behavior_ == Behavior::WakeUp) {
-        const Status light_status = light_.play(LightPattern::SoftBreathing, execution_id_);
-        if (!light_status.ok()) {
-            return enter_fault_with(light_status.code());
-        }
-    }
-    state_ = BehaviorRunState::Idle;
-    start_time_initialized_ = false;
+    state_ = BehaviorRunState::Idle;    // 变成空闲状态
+    start_time_initialized_ = false;    // 清除超时计数
     if (current_plan_.completion == CompletionTarget::Sleeping) {
-        outcome_ = BehaviorOutcome::CompletedSleeping;
+        outcome_ = BehaviorOutcome::CompletedSleeping;  // 睡觉成功进入睡眠结果
     } else {
-        outcome_ = BehaviorOutcome::CompletedIdle;
+        outcome_ = BehaviorOutcome::CompletedIdle;      // 结果进入空闲
     }
     return Status::success();
 }

@@ -56,8 +56,8 @@ public:
 
 class V2LightOutput final : public ILightPort {
 public:
-    Status play(LightPattern value, std::uint32_t) override {
-        pattern = value;
+    Status play(LightCue value, std::uint32_t) override {
+        cue = value;
         return Status::success();
     }
     Status stop() override { return Status::success(); }
@@ -67,7 +67,7 @@ public:
         return Status::success();
     }
 
-    LightPattern pattern{LightPattern::FadeOut};
+    LightCue cue{LightCue::Default};
     std::uint16_t intensity{0};
 };
 
@@ -86,8 +86,8 @@ public:
 
 class V2Power final : public IPowerPort {
 public:
-    Status enter_light_sleep() override { return Status::success(); }
-    Status leave_light_sleep() override { return Status::success(); }
+    Status allow_light_sleep() override { return Status::success(); }
+    Status restore_active_mode() override { return Status::success(); }
     Status enter_deep_sleep(std::uint64_t) override { return Status::success(); }
     WakeSource wake_source() const override { return WakeSource::Touch; }
 };
@@ -272,7 +272,7 @@ void test_light_sleep_keeps_environment_sampling_and_queues_growth() {
     CHECK_V2_APP(fixture.lifecycle.begin_behavior(Behavior::Sleep).ok());
     CHECK_V2_APP(
         fixture.lifecycle.apply_behavior_outcome(BehaviorOutcome::CompletedSleeping).ok());
-    CHECK_V2_APP(fixture.lifecycle.enter_light_sleep().ok());
+    CHECK_V2_APP(fixture.lifecycle.enter_light_sleep_mode().ok());
 
     fixture.acoustic_port.queued = {AcousticSample{900, true}, true, Status::success()};
     fixture.climate_port.queued = {
@@ -378,7 +378,7 @@ void test_inactivity_decay_wakes_light_sleep_moves_down_and_returns_to_sleep() {
     CHECK_V2_APP(fixture.lifecycle.begin_behavior(Behavior::Sleep).ok());
     CHECK_V2_APP(
         fixture.lifecycle.apply_behavior_outcome(BehaviorOutcome::CompletedSleeping).ok());
-    CHECK_V2_APP(fixture.lifecycle.enter_light_sleep().ok());
+    CHECK_V2_APP(fixture.lifecycle.enter_light_sleep_mode().ok());
 
     constexpr std::uint64_t inactivity_us =
         6ULL * 60ULL * 60ULL * 1000ULL * 1000ULL;

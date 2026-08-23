@@ -322,7 +322,7 @@ for (int i = 0; i < 100; ++i) {
 推荐模型：
 
 ```text
-LightPattern::Breathing
+LightCue::Happy
         ↓
 LightingService
         ↓
@@ -573,4 +573,3 @@ Timer / State Machine / Queue 是否已经足够？
 ```
 
 如果这些问题没有明确答案，则不应该创建新的 Task。
-

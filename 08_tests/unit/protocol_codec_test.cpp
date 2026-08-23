@@ -128,6 +128,8 @@ void test_crc_and_payload_validation() {
                    ErrorCode::InvalidArgument);
 
     const std::uint8_t internal_growth_behaviors[]{
+        2,
+        3,
         static_cast<std::uint8_t>(Behavior::Grow),
         static_cast<std::uint8_t>(Behavior::Retract),
     };
@@ -240,7 +242,7 @@ void test_communication_service_round_trip() {
                        CommunicationState{
                            DeviceState::Idle,
                            PowerMode::Active,
-                           Behavior::Calm,
+                           Behavior::Happy,
                            OtaState::Idle,
                            0,
                            0x00010000,

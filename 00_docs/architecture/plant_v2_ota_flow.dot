@@ -1,0 +1,31 @@
+digraph PlantV2OtaFlow {
+    graph [rankdir=TB, bgcolor="white", pad=0.3, nodesep=0.45, ranksep=0.52, fontname="Noto Sans CJK SC"];
+    node [shape=box, style="rounded,filled", color="#BE185D", penwidth=1.15, margin="0.16,0.10", fontname="Noto Sans CJK SC", fontsize=11];
+    edge [color="#64748B", penwidth=1.2, arrowsize=0.7, fontname="Noto Sans CJK SC", fontsize=9];
+
+    gatt [label="BLE GATT 写入回调\n仅加密且已绑定的链路允许进入", fillcolor="#FCE7F3"];
+    queue [label="ESP BLE Adapter 静态队列\n避免在回调中执行业务逻辑", fillcolor="#FCE7F3"];
+    decode [label="CommunicationService.poll\nDecoder 校验帧、长度、命令与参数", fillcolor="#FCE7F3"];
+    kind [shape=diamond, label="OTA 命令类型", fillcolor="#FFF7ED", color="#B45309"];
+    begin [label="BeginOta\n校验 metadata\n必要时先退出 Light Sleep 或完成 Sleep\nLifecycle -> Updating；ota.begin", fillcolor="#FCE7F3"];
+    chunk [label="OtaChunk（仅 Receiving）\n要求 offset 连续、大小合法\n写入 flash 并累计 received_bytes", fillcolor="#FCE7F3"];
+    finished [shape=diamond, label="received_bytes == image_size？", fillcolor="#FFF7ED", color="#B45309"];
+    verify [label="FinishOta\nverify_and_activate\nReadyToReboot；Lifecycle 请求重启", fillcolor="#FCE7F3"];
+    reboot [label="ESP restart\n下次启动执行 boot confirmation", fillcolor="#DBEAFE", color="#1D4ED8"];
+    cancel [label="CancelOta 或 OTA 期间断链\nota.abort；Lifecycle.cancel_update", fillcolor="#F1F5F9", color="#64748B"];
+    fail [label="开始、写入或验证失败\nota.abort；Ota Failed\nLifecycle.fail_update(recoverable)", fillcolor="#FEE2E2", color="#B91C1C"];
+
+    gatt -> queue -> decode -> kind;
+    kind -> begin [label="BeginOta"];
+    kind -> chunk [label="OtaChunk；否则 InvalidState"];
+    kind -> cancel [label="CancelOta"];
+    begin -> chunk [label="成功"];
+    begin -> fail [label="失败", color="#DC2626"];
+    chunk -> chunk [label="下一块"];
+    chunk -> finished [label="FinishOta"];
+    chunk -> fail [label="写入失败", color="#DC2626"];
+    finished -> verify [label="是"];
+    finished -> fail [label="否", color="#DC2626"];
+    verify -> reboot [label="成功"];
+    verify -> fail [label="失败", color="#DC2626"];
+}

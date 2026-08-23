@@ -118,21 +118,14 @@ V2IlluminationAdapter illumination_port{adc};   // TODO： 这个是光照
 Aht21Adapter climate_port{i2c};
 Max17048Adapter battery_port{i2c};  // TODO： 电池用它肯定不合适
 
-// 这些是服务 服务和具体实现无关 他们只需要知道逻辑即可 用的也是父类
+// 这些是服务 服务和具体实现无关 他们只需要知道逻辑即可 用的也是父类 这里把依赖注入了
 BehaviorService behavior{
     motion,
     light,
     haptic,
     BehaviorExecutionConfig{5ULL * 1000ULL * 1000ULL}};
 LifecycleService lifecycle;
-PowerService power{
-    lifecycle,
-    power_port,
-    LowPowerConfig{
-        Product::Power::deep_sleep_enabled,
-        Product::Power::deep_sleep_delay_ms,
-        Product::Power::timer_wakeup_us,
-    }};
+PowerService power{lifecycle, power_port};
 OtaService ota{
     lifecycle,
     ota_port,
@@ -373,13 +366,6 @@ void finish_boot(bool sensors_ok, std::uint64_t now_us) {
         boot_ok ? "ready" : "fault");
 }
 
-bool position_is_safe_for_deep_sleep() {
-    const PositionSnapshot position = motion.position_snapshot();
-    // Sleep 不再改变生长高度；Behavior Service 已停止 PWM 并关闭舵机电源，因此深睡
-    // 只需确认反馈仍有效且没有未完成的生长/衰减运动。
-    return position.feedback == PositionFeedbackState::Valid && !position.moving;
-}
-
 }  // namespace
 
 void initialize() {
@@ -504,22 +490,6 @@ void initialize() {
                 Product::Interaction::automatic_sleep_ms * 1000ULL) {
             last_activity_us = now_us;
             report_event_failure("idle timeout", application.handle_idle_timeout());
-        }
-        if (lifecycle_state.state == DeviceState::Sleeping &&
-            lifecycle_state.power_mode == PowerMode::LightSleep &&
-            Product::Power::deep_sleep_enabled &&
-            Product::Power::deep_sleep_delay_ms != 0 &&
-            position_is_safe_for_deep_sleep() &&
-            now_us - last_activity_us >= Product::Power::deep_sleep_delay_ms * 1000ULL) {
-            const OtaState ota_state = ota.snapshot().state;
-            report_event_failure(
-                "deep sleep",
-                power.request_deep_sleep(PowerConditions{
-                    communication.connected(),
-                    ota_state == OtaState::Receiving || ota_state == OtaState::Verifying,
-                    // V2 当前没有运行时配置写入；加入持久化后必须接入真实 Storage busy。
-                    false,
-                }));
         }
         wait_for_runtime_event(next_loop_delay_ms(now_us));
     }

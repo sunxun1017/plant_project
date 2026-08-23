@@ -1,0 +1,40 @@
+digraph PlantV2RuntimeOverview {
+    graph [
+        rankdir=LR,
+        bgcolor="white",
+        pad=0.35,
+        nodesep=0.55,
+        ranksep=0.8,
+        fontname="Noto Sans CJK SC"
+    ];
+    node [
+        shape=box,
+        style="rounded,filled",
+        color="#334155",
+        penwidth=1.2,
+        margin="0.18,0.12",
+        fontname="Noto Sans CJK SC",
+        fontsize=12
+    ];
+    edge [color="#64748B", penwidth=1.3, arrowsize=0.75];
+
+    boot [label="01  启动与自检\n关键硬件必须成功\n环境传感器可降级", fillcolor="#DBEAFE"];
+    loop [label="02  事件循环\n任务通知 + 自适应 tick\n维护基础输出与状态", fillcolor="#DCFCE7"];
+    interaction [label="03  前台交互\n触摸、BLE 安全连接、命令\n语义行为 -> 灯光/振动", fillcolor="#EDE9FE"];
+    sensing [label="04  感知与生长\n环境状态机 -> 有界奖励\n位置闭环 Grow / Retract", fillcolor="#FEF3C7"];
+    ota [label="05  BLE 与 OTA\n加密/绑定门禁\n分块写入、校验、重启", fillcolor="#FCE7F3"];
+    power [label="06  生命周期与电源\nIdle / Interacting / Sleeping\nLight Sleep", fillcolor="#E2E8F0"];
+    fault [label="故障安全路径\n停止输出；Error 灯光/振动\nLifecycle -> Fault", fillcolor="#FEE2E2", color="#B91C1C"];
+
+    boot -> loop;
+    loop -> interaction;
+    loop -> sensing;
+    interaction -> power;
+    sensing -> power;
+    interaction -> ota;
+    ota -> loop [label="重启后"];
+    interaction -> fault [color="#DC2626"];
+    sensing -> fault [color="#DC2626"];
+    ota -> fault [color="#DC2626"];
+    fault -> loop [label="主循环继续；允许恢复 OTA", style=dashed, color="#DC2626"];
+}

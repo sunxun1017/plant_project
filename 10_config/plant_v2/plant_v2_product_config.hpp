@@ -82,14 +82,6 @@ struct ProductConfig final {
         static constexpr std::uint32_t sleeping_tick_ms = 1000;
     };
 
-    struct Power final {
-        // 首版硬件在完成整机电流、唤醒和 BLE 重连验收前默认不进入深睡，
-        // 避免离线后只能依赖触摸唤醒而造成“设备失踪”的体验。
-        static constexpr bool deep_sleep_enabled = false;
-        static constexpr std::uint32_t deep_sleep_delay_ms = 30U * 60U * 1000U;
-        static constexpr std::uint64_t timer_wakeup_us = 0;
-    };
-
     struct Product final {
         static constexpr char device_name[] = "Plant-V2-C3";
         static constexpr std::uint32_t product_id = 0x504C414EU;  // "PLAN"

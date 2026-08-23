@@ -1,0 +1,50 @@
+digraph PlantV2GrowthFlow {
+    graph [rankdir=TB, bgcolor="white", pad=0.3, nodesep=0.45, ranksep=0.52, fontname="Noto Sans CJK SC"];
+    node [shape=box, style="rounded,filled", color="#A16207", penwidth=1.15, margin="0.16,0.10", fontname="Noto Sans CJK SC", fontsize=11];
+    edge [color="#64748B", penwidth=1.2, arrowsize=0.7, fontname="Noto Sans CJK SC", fontsize=9];
+
+    subgraph cluster_sources {
+        label="奖励来源";
+        color="#FDE68A";
+        style="rounded";
+        touch [label="单击触摸\nTouch", fillcolor="#FFFBEB"];
+        speech [label="持续说话\nSustainedSpeech", fillcolor="#FFFBEB"];
+        sunlight [label="明亮暴露\nBrightExposure", fillcolor="#FFFBEB"];
+        climate [label="适宜气候\nSuitableClimate", fillcolor="#FFFBEB"];
+    }
+
+    submit [label="GrowthService.submit\n来源独立冷却；固定容量队列\n超过容量或冷却期返回 Busy", fillcolor="#FEF3C7"];
+    availability [shape=diamond, label="可推进？\nBehavior Idle、OTA Idle\nIdle 前台，或 LightSleep 中允许衰减", fillcolor="#FFF7ED", color="#B45309"];
+    position [shape=diamond, label="位置反馈 Valid\n且处于安全范围？", fillcolor="#FFF7ED", color="#B45309"];
+    evaluate [label="evaluate()\n丢弃过期 credit\n或计算无交互后的定期 Retract", fillcolor="#FEF3C7"];
+    decision [shape=diamond, label="GrowthDecision", fillcolor="#FFF7ED", color="#B45309"];
+    noAction [label="None\n等待下一次 tick", fillcolor="#F1F5F9", color="#64748B"];
+    limit [label="ShowLimit\n只请求 GrowthLimit 灯效", fillcolor="#FEF3C7"];
+    grow [label="Grow\nLifecycle -> Interacting\nmotion.move_to(Grow, target)\nGrowth 灯效", fillcolor="#DCFCE7", color="#15803D"];
+    wake [label="Sleeping 中需要 Retract\nwake_from_low_power\n不播放 WakeUp 表现", fillcolor="#DBEAFE", color="#1D4ED8"];
+    retract [label="Retract\nLifecycle -> Interacting\nmotion.move_to(Retract, target)", fillcolor="#DBEAFE", color="#1D4ED8"];
+    done [label="位置轮询报告完成\n清除增长运行状态\nLifecycle -> Idle", fillcolor="#DCFCE7", color="#15803D"];
+    resleep [label="后台衰减完成\n重新请求 Light Sleep", fillcolor="#DBEAFE", color="#1D4ED8"];
+    fault [label="位置无效、越界或运动失败\n停止 motion；FaultRaised -> Fault", fillcolor="#FEE2E2", color="#B91C1C"];
+
+    {rank=same; touch; speech; sunlight; climate;}
+    touch -> submit;
+    speech -> submit;
+    sunlight -> submit;
+    climate -> submit;
+    submit -> availability;
+    availability -> noAction [label="否"];
+    availability -> position [label="是"];
+    position -> fault [label="否", color="#DC2626"];
+    position -> evaluate [label="是"];
+    evaluate -> decision;
+    decision -> noAction [label="None"];
+    decision -> limit [label="ShowLimit"];
+    decision -> grow [label="Grow"];
+    decision -> retract [label="Idle 中 Retract"];
+    decision -> wake [label="Sleeping 中 Retract"];
+    wake -> retract;
+    grow -> done [label="位置完成"];
+    retract -> done [label="位置完成"];
+    done -> resleep [label="后台衰减"];
+}

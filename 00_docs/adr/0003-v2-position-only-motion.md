@@ -21,5 +21,5 @@ V2 只使用包含 `Grow` 和 `Retract` 的 `MotionPattern`，不再由 `Behavio
 
 ## 后果
 
-V2 的舵机不会因为 Happy、Attention、WakeUp 或 Sleep 播放额外姿态动作，避免产品语义和机械运动边界混淆。
+V2 的舵机不会因为 Happy、WakeUp 或 Sleep 播放额外姿态动作，避免产品语义和机械运动边界混淆。
 V1 的表现性运动源文件保留为历史代码，但不再被 V2 构建入口或 V2 测试编译。

@@ -1,3 +1,11 @@
+/*
+ * @Author: sunxun sx2728977548@163.com
+ * @Date: 2026-08-22 18:24:06
+ * @LastEditors: sunxun sx2728977548.com
+ * @LastEditTime: 2026-08-23 13:39:21
+ * @FilePath: /plant_project/05_adapters/espidf/ble/esp_ble_adapter.hpp
+ * @Description: 
+ */
 #pragma once
 
 #include <array>
@@ -17,8 +25,8 @@ struct ble_store_status_event;
 namespace plant {
 
 struct EspBleConfig {
-    const char* device_name;
-    std::uint16_t service_uuid;
+    const char* device_name;    // 设备名称
+    std::uint16_t service_uuid; // 
     std::uint16_t command_uuid;
     std::uint16_t response_uuid;
     std::uint16_t preferred_mtu;
@@ -31,7 +39,7 @@ struct EspBleConfig {
     EspRuntimeEventSignal runtime_event{};
 };
 
-class EspBleAdapter final : public IBlePort {
+class EspBleAdapter final : public IBlePort {   // 这个才是它的ble具体实现
 public:
     explicit EspBleAdapter(EspBleConfig config) noexcept;
     Status initialize() override;
@@ -62,7 +70,14 @@ private:
     };
 
     enum class AdvertisingMode : std::uint8_t { Fast, Slow };
-
+    /**
+     * @brief 启动ble广播
+     * 
+     * @param mode 
+     * fast: 广播模式 刚开机希望手机快速发现广播时间短
+     * slow: 等待连接 降低功耗
+     * @return Status 
+     */
     Status start_advertising(AdvertisingMode mode);
     bool enqueue(const std::uint8_t* data, std::size_t size);
     void signal_runtime_event() const noexcept;

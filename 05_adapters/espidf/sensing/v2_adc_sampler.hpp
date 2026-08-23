@@ -1,3 +1,11 @@
+/*
+ * @Author: sunxun sx2728977548@163.com
+ * @Date: 2026-08-22 18:24:06
+ * @LastEditors: sunxun sx2728977548.com
+ * @LastEditTime: 2026-08-23 12:24:29
+ * @FilePath: /plant_project/05_adapters/espidf/sensing/v2_adc_sampler.hpp
+ * @Description: adc's adapter
+ */
 #pragma once
 
 #include <cstdint>

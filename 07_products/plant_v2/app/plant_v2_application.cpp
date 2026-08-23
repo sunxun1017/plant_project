@@ -56,7 +56,7 @@ Status PlantV2Application::tick(std::uint64_t now_us) {
     if (behavior.state == BehaviorRunState::Idle) {
         if (lifecycle_.snapshot().state == DeviceState::Idle) {
             // 前台行为完成后释放灯光；随后由当前传感状态重新选择背景灯效。
-            light_.clear(LightRequestSource::ForegroundBehavior);
+            light_.clear(LightLayer::ForegroundBehavior);
         }
         const Status motion_status = poll_motion(now_us);
         if (!motion_status.ok()) {
@@ -97,8 +97,8 @@ Status PlantV2Application::handle_touch(TouchGesture gesture, std::uint64_t now_
     }
     if (gesture == TouchGesture::SingleTap) {
         (void)light_.request(
-            LightRequestSource::Touch,
-            LightPattern::TouchPulse,
+            LightLayer::Touch,
+            LightCue::TouchAccepted,
             kNormalizedSensorMaximum,
             now_us,
             450ULL * 1000ULL);
@@ -122,7 +122,7 @@ Status PlantV2Application::handle_command(const Command& command) {
     growth_motion_active_ = false;
     growth_motion_source_ = GrowthSource::None;
     return_to_sleep_after_decay_ = false;
-    light_.clear(LightRequestSource::Growth);
+    light_.clear(LightLayer::Growth);
     const Status lifecycle_status =
         lifecycle_.apply_behavior_outcome(BehaviorOutcome::Stopped);
     return !stop_status.ok() ? stop_status : lifecycle_status;
@@ -198,13 +198,13 @@ Status PlantV2Application::poll_motion(std::uint64_t now_us) {
     }
 
     growth_motion_active_ = false;
-    light_.clear(LightRequestSource::Growth);
+    light_.clear(LightLayer::Growth);
     const bool was_decay = growth_motion_source_ == GrowthSource::InactivityDecay;
     growth_motion_source_ = GrowthSource::None;
     if (!was_decay) {
         (void)light_.request(
-            LightRequestSource::Growth,
-            LightPattern::GrowthRise,
+            LightLayer::Growth,
+            LightCue::Growth,
             kNormalizedSensorMaximum,
             now_us,
             400ULL * 1000ULL);
@@ -243,8 +243,8 @@ Status PlantV2Application::poll_sensors(
             if (snapshot.state == AcousticState::Speaking ||
                 snapshot.state == AcousticState::SustainedSpeech) {
                 (void)light_.request(
-                    LightRequestSource::Speech,
-                    LightPattern::ListeningBreath,
+                    LightLayer::Speech,
+                    LightCue::Listening,
                     snapshot.volume_level,
                     now_us,
                     150ULL * 1000ULL);
@@ -268,8 +268,8 @@ Status PlantV2Application::poll_sensors(
         const IlluminationSnapshot snapshot = illumination_.snapshot();
         if (!sleeping && snapshot.state == IlluminationState::BrightExposure) {
             (void)light_.request(
-                LightRequestSource::Sunlight,
-                LightPattern::SunGlow,
+                LightLayer::Sunlight,
+                LightCue::SunlightExposure,
                 snapshot.relative_level,
                 now_us,
                 250ULL * 1000ULL);
@@ -290,8 +290,8 @@ Status PlantV2Application::poll_sensors(
         }
         if (!sleeping && climate_.snapshot().state == ClimateState::Suitable) {
             (void)light_.request(
-                LightRequestSource::Climate,
-                LightPattern::ComfortGlow,
+                LightLayer::Climate,
+                LightCue::Comfort,
                 600,
                 now_us,
                 2500ULL * 1000ULL);
@@ -342,8 +342,8 @@ Status PlantV2Application::evaluate_growth(std::uint64_t now_us) {
     }
     if (decision.action == GrowthAction::ShowLimit) {
         return light_.request(
-            LightRequestSource::Growth,
-            LightPattern::GrowthLimit,
+            LightLayer::Growth,
+            LightCue::GrowthLimit,
             kNormalizedSensorMaximum,
             now_us,
             500ULL * 1000ULL);
@@ -373,12 +373,12 @@ Status PlantV2Application::evaluate_growth(std::uint64_t now_us) {
     growth_motion_active_ = true;
     growth_motion_source_ = decision.source;
     if (decay) {
-        light_.clear(LightRequestSource::Growth);
+        light_.clear(LightLayer::Growth);
         return Status::success();
     }
     return light_.request(
-        LightRequestSource::Growth,
-        LightPattern::GrowthRise,
+        LightLayer::Growth,
+        LightCue::Growth,
         kNormalizedSensorMaximum,
         now_us);
 }
@@ -406,9 +406,9 @@ void PlantV2Application::update_acoustic_sampling() {
     if (!should_enable) {
         // 浅睡、故障和 OTA 均关闭麦克风以控制功耗、自噪和隐私；光照、温湿度与
         // 电量在浅睡中仍低频采样，环境奖励唤醒后再逐项驱动舵机和灯光。
-        light_.clear(LightRequestSource::Speech);
-        light_.clear(LightRequestSource::Sunlight);
-        light_.clear(LightRequestSource::Climate);
+        light_.clear(LightLayer::Speech);
+        light_.clear(LightLayer::Sunlight);
+        light_.clear(LightLayer::Climate);
     }
 }
 
