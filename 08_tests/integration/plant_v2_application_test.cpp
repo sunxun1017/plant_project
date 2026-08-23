@@ -87,9 +87,14 @@ public:
 class V2Power final : public IPowerPort {
 public:
     Status allow_light_sleep() override { return Status::success(); }
-    Status restore_active_mode() override { return Status::success(); }
+    Status restore_active_mode() override {
+        ++restore_active_mode_count;
+        return Status::success();
+    }
     Status enter_deep_sleep(std::uint64_t) override { return Status::success(); }
     WakeSource wake_source() const override { return WakeSource::Touch; }
+
+    int restore_active_mode_count{0};
 };
 
 class V2Ota final : public IOtaPort {
@@ -345,7 +350,7 @@ void test_acoustic_mask_includes_haptic_output_and_recovery_window() {
 void test_touch_credit_uses_measured_position_and_closes_motion_loop() {
     V2Fixture fixture;
     CHECK_V2_APP(fixture.base.finish_boot(true).ok());
-    CHECK_V2_APP(fixture.app.handle_touch(TouchGesture::SingleTap, 1000).ok());
+    CHECK_V2_APP(fixture.app.handle_touch(TouchGesture::Touch, 1000).ok());
     const std::uint32_t behavior_id = fixture.behavior.snapshot().execution_id;
     fixture.motion.poll_result = MotionPollResult{true, behavior_id};
 
@@ -367,8 +372,23 @@ void test_touch_behavior_does_not_move_growth_servo() {
     V2Fixture fixture;
     CHECK_V2_APP(fixture.base.finish_boot(true).ok());
 
-    CHECK_V2_APP(fixture.app.handle_touch(TouchGesture::SingleTap, 1000).ok());
+    CHECK_V2_APP(fixture.app.handle_touch(TouchGesture::Touch, 1000).ok());
     CHECK_V2_APP(!fixture.motion.snapshot.moving);
+}
+
+void test_touch_wakes_light_sleep_with_the_same_happy_interaction() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(true).ok());
+    CHECK_V2_APP(fixture.base.handle_idle_timeout().ok());
+    CHECK_V2_APP(fixture.app.tick(500).ok());
+    CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Sleeping);
+    CHECK_V2_APP(fixture.lifecycle.snapshot().power_mode == PowerMode::LightSleep);
+
+    CHECK_V2_APP(fixture.app.handle_touch(TouchGesture::Touch, 1000).ok());
+    CHECK_V2_APP(fixture.power_port.restore_active_mode_count == 1);
+    CHECK_V2_APP(fixture.base.tick(1500).ok());
+    CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Idle);
+    CHECK_V2_APP(fixture.behavior.snapshot().behavior == Behavior::Happy);
 }
 
 void test_inactivity_decay_wakes_light_sleep_moves_down_and_returns_to_sleep() {
@@ -490,6 +510,7 @@ int run_plant_v2_application_tests() {
     test_acoustic_mask_includes_haptic_output_and_recovery_window();
     test_touch_credit_uses_measured_position_and_closes_motion_loop();
     test_touch_behavior_does_not_move_growth_servo();
+    test_touch_wakes_light_sleep_with_the_same_happy_interaction();
     test_inactivity_decay_wakes_light_sleep_moves_down_and_returns_to_sleep();
     test_unconfirmed_idle_position_glitch_pauses_tick_without_fault();
     test_idle_position_failure_enters_fault();

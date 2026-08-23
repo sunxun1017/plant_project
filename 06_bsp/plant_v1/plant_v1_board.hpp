@@ -54,7 +54,7 @@ struct BoardConfig final {
     struct Touch final {
         static constexpr bool active_high = true;
         static constexpr std::uint32_t debounce_ms = 80;
-        static constexpr std::uint32_t long_press_ms = 2000;
+        static constexpr std::uint32_t minimum_touch_ms = 300;
         static constexpr bool enable_internal_pull_down = true;
     };
 
@@ -99,6 +99,7 @@ static_assert(BoardConfig::Servo::neutral_pulse_us < BoardConfig::Servo::maximum
 static_assert(BoardConfig::Servo::look_up_pulse_us <= BoardConfig::Servo::maximum_pulse_us);
 static_assert(BoardConfig::Led::maximum_duty <= 255);
 static_assert(BoardConfig::Vibration::soft_duty < BoardConfig::Vibration::warning_duty);
+static_assert(BoardConfig::Touch::minimum_touch_ms > 0);
 static_assert(
     BoardConfig::Ble::fast_advertising_interval_min_units <=
     BoardConfig::Ble::fast_advertising_interval_max_units);

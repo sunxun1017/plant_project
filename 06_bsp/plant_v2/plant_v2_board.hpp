@@ -200,8 +200,8 @@ struct BoardConfig final {
 
     struct Touch final {
         static constexpr bool active_high = true;
-        // TTP223 默认持续高电平表示触摸，输出为推挽；弱下拉保证传感器断开时不会把悬空
-        // 输入误判为长按恢复。灵敏度电容由样机和外壳厚度确定。
+        // TTP223 默认持续高电平表示触摸，输出为推挽；弱下拉保证传感器断开时输入保持
+        // 未触摸状态。灵敏度电容由样机和外壳厚度确定。
         static constexpr bool enable_internal_pull_down = true;
     };
 

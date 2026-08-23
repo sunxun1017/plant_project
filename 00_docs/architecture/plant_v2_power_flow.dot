@@ -16,7 +16,7 @@ digraph PlantV2PowerFlow {
     idle -> interacting [label="开始行为或生长"];
     interacting -> idle [label="完成 / Stop"];
     interacting -> sleeping [label="Sleep 完成"];
-    sleeping -> idle [label="WakeUp 或后台 Retract 唤醒"];
+    sleeping -> idle [label="抚摸 / Happy / 后台 Retract 恢复"];
     idle -> updating [label="BeginOta"];
     interacting -> updating [label="先完成 Sleep 后 BeginOta"];
     sleeping -> updating [label="先恢复主动电源域"];

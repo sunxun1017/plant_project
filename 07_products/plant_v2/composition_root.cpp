@@ -87,8 +87,7 @@ EspTouchAdapter touch{EspTouchConfig{
     Board::Gpio::touch_input,
     Board::Touch::active_high,
     Product::Touch::debounce_ms,
-    Product::Touch::long_press_ms,
-    Product::Touch::factory_reset_hold_ms,
+    Product::Touch::minimum_touch_ms,
     Board::Touch::enable_internal_pull_down,
     EspRuntimeEventSignal{signal_system_task, nullptr},
 }};
@@ -432,21 +431,11 @@ void initialize() {
             last_activity_us = now_us;
             const bool waking_from_sleep =
                 lifecycle.snapshot().state == DeviceState::Sleeping;
-            if (gesture == TouchGesture::FactoryResetHold) {
-                const Status reset_status = ble.forget_bonds();
-                if (reset_status.ok()) {
-                    ESP_LOGW(kTag, "local recovery cleared all BLE bonds");
-                    vTaskDelay(pdMS_TO_TICKS(100));
-                    esp_restart();
-                }
-                ESP_LOGE(kTag, "failed to clear BLE bonds");
-            } else {
-                const Status touch_status = application.handle_touch(gesture, now_us);
-                if (touch_status.ok() && waking_from_sleep) {
-                    report_event_failure("fast advertising", ble.request_fast_advertising());
-                } else if (!touch_status.ok() && touch_status.code() != ErrorCode::Busy) {
-                    report_event_failure("touch", touch_status);
-                }
+            const Status touch_status = application.handle_touch(gesture, now_us);
+            if (touch_status.ok() && waking_from_sleep) {
+                report_event_failure("fast advertising", ble.request_fast_advertising());
+            } else if (!touch_status.ok() && touch_status.code() != ErrorCode::Busy) {
+                report_event_failure("touch", touch_status);
             }
         }
 
@@ -460,15 +449,9 @@ void initialize() {
                 }
             } else {
                 last_activity_us = now_us;
-                const Status execution_status = command.type == CommandType::ForgetBonds
-                                                    ? ble.forget_bonds()
-                                                    : application.handle_command(command);
+                const Status execution_status = application.handle_command(command);
                 respond_with_current_state(command, execution_status);
                 if (execution_status.ok() && command.type == CommandType::FinishOta) {
-                    vTaskDelay(pdMS_TO_TICKS(100));
-                    esp_restart();
-                }
-                if (execution_status.ok() && command.type == CommandType::ForgetBonds) {
                     vTaskDelay(pdMS_TO_TICKS(100));
                     esp_restart();
                 }

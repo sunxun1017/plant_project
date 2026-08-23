@@ -7,7 +7,7 @@ digraph PlantV2GrowthFlow {
         label="奖励来源";
         color="#FDE68A";
         style="rounded";
-        touch [label="单击触摸\nTouch", fillcolor="#FFFBEB"];
+        touch [label="有效抚摸\nTouch", fillcolor="#FFFBEB"];
         speech [label="持续说话\nSustainedSpeech", fillcolor="#FFFBEB"];
         sunlight [label="明亮暴露\nBrightExposure", fillcolor="#FFFBEB"];
         climate [label="适宜气候\nSuitableClimate", fillcolor="#FFFBEB"];

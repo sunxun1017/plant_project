@@ -55,7 +55,7 @@ Quiet
 | `BrightExposure` | 暖黄慢呼吸 | 有效照射累计达到一个时间片 | 当前实测位置 |
 | `SpeechStarted` | 青蓝呼吸开始 | 不申请，只更新音量和状态 | — |
 | `SustainedSpeechDetected` | 青蓝短增强 | 去重后的独立持续讲话边沿 | 当前实测位置 |
-| 有效抚摸 | 绿色短脉冲 | 触摸防抖通过 | 当前实测位置 |
+| 有效抚摸 | 绿色短脉冲 | 稳定触摸至少 300 ms 后稳定释放 | 当前实测位置 |
 | `SuitableClimate` | 柔和粉白渐亮 | 温湿度同时适宜达到一个时间片 | 当前实测位置 |
 
 四个来源的每个有效事件都向 Growth Service 提交一个 `GrowthCredit`。Growth Service

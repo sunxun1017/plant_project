@@ -20,7 +20,6 @@ enum class CommandType : std::uint8_t {
     OtaChunk = 0x11,
     FinishOta = 0x12,
     CancelOta = 0x13,
-    ForgetBonds = 0x20,
 };
 
 struct Command {

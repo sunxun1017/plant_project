@@ -1,3 +1,11 @@
+/*
+ * @Author: sunxun sx2728977548@163.com
+ * @Date: 2026-08-22 18:24:06
+ * @LastEditors: sunxun sx2728977548.com
+ * @LastEditTime: 2026-08-23 18:59:19
+ * @FilePath: /plant_project/07_products/plant_v1/app/plant_application.hpp
+ * @Description:
+ */
 #pragma once
 
 #include "01_core/common/status.hpp"
@@ -12,6 +20,10 @@
 
 namespace plant {
 
+/**
+ * @brief 服务的协调者
+ *
+ */
 class PlantApplication {
 public:
     PlantApplication(
@@ -19,10 +31,26 @@ public:
         LifecycleService& lifecycle,
         PowerService& power,
         OtaService& ota) noexcept;
-
+    /**
+     * @brief 自检后执行，实际上就是把生命周期赋值了
+     *
+     * @param self_test_passed
+     * @return Status
+     */
     Status finish_boot(bool self_test_passed);
     Status tick(std::uint64_t now_us);
+    /**
+     * @brief 执行触摸操作
+     *
+     * @param gesture
+     * @return Status
+     */
     Status handle_touch(TouchGesture gesture);
+    /**
+     * @brief 通信连接
+     *
+     * @return Status
+     */
     Status handle_communication_connected();
     Status handle_communication_disconnected();
     Status request_behavior(
@@ -49,6 +77,12 @@ public:
 private:
     Status start_behavior(Behavior behavior, InterruptionReason reason);
     Status apply_behavior_outcome(BehaviorOutcome outcome);
+    /**
+     * @brief 处理结果
+     *
+     * @param operation_status
+     * @return Status
+     */
     Status apply_pending_behavior_outcome(Status operation_status);
 
     BehaviorService& behavior_;

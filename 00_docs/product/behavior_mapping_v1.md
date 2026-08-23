@@ -10,11 +10,11 @@
 
 | 行为 | 典型触发 | Motion 语义 | Lighting 语义 | Haptic 语义 | 结束状态 | 可被普通事件中断 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `WakeUp` | 休眠时单击、BLE 唤醒 | `Wake` | `FadeIn` 后 `SoftBreathing` | `SoftPulse` | `Idle` | 否，仅停止或故障 |
-| `Happy` | 空闲时单击、BLE 命令 | `GentleSway` | `SoftBreathing` | `DoubleSoftPulse` | `Idle` | 是 |
+| `WakeUp` | 显式 BLE 唤醒命令 | `Wake` | `FadeIn` 后 `SoftBreathing` | `SoftPulse` | `Idle` | 否，仅停止或故障 |
+| `Happy` | 抚摸、BLE 命令 | `GentleSway` | `SoftBreathing` | `DoubleSoftPulse` | `Idle` | 是 |
 | `Attention` | BLE 连接成功或明确命令 | `LookUp` | `ShortPulse` | `SoftPulse` | `Idle` | 是 |
 | `Calm` | 明确命令、互动收尾 | `ReturnNeutral` | `SlowBreathing` | `Off` | `Idle` | 是 |
-| `Sleep` | 长按、BLE 命令、空闲超时 | `MoveToSleepPose` | `FadeOut` | `SoftPulse` | `Sleeping` | 否，仅唤醒、停止或故障 |
+| `Sleep` | BLE 命令、空闲超时 | `MoveToSleepPose` | `FadeOut` | `SoftPulse` | `Sleeping` | 否，仅唤醒、停止或故障 |
 | `Error` | 不可恢复故障 | `StopAndHoldSafe` | `ErrorBlink` | `Warning` 后停止 | `Fault` | 否，仅复位 |
 
 ## 3. 行为分解
@@ -114,12 +114,10 @@
 
 | 当前生命周期 | 输入 | 条件 | 结果 |
 | --- | --- | --- | --- |
-| `Sleeping` | 单击 | 触摸有效 | 执行 `WakeUp` |
-| `Idle` | 单击 | 触摸有效 | 执行 `Happy` |
-| `Interacting` | 单击 | 当前行为可中断 | 中断当前行为并执行 `Happy` |
-| `Interacting` | 单击 | 当前行为不可被普通事件中断 | 忽略并记录原因 |
-| `Idle` / `Interacting` | 长按 | 达到长按阈值 | 执行 `Sleep` |
-| `Sleeping` | 长按 | 达到长按阈值 | 执行 `WakeUp` |
+| `Sleeping` | 抚摸 | 稳定触摸至少 300 ms 后稳定释放 | 恢复主动电源域并执行 `Happy` |
+| `Idle` | 抚摸 | 稳定触摸至少 300 ms 后稳定释放 | 执行 `Happy` |
+| `Interacting` | 抚摸 | 当前行为可中断 | 中断当前行为并执行 `Happy` |
+| `Interacting` | 抚摸 | 当前行为不可被普通事件中断 | 忽略并记录原因 |
 | `Booting` | 任意触摸 | 初始化未完成 | 忽略，不缓存 |
 | `Fault` | 任意触摸 | 未复位 | 忽略 |
 | `Updating` | 任意触摸 | OTA 尚未结束 | 忽略，不缓存 |
@@ -179,8 +177,8 @@ OTA 不是产品行为，而是生命周期流程。系统接受通过前置校�
 
 | 参数 | 初始建议值 | 允许调整范围 |
 | --- | --- | --- |
-| 单击防抖时间 | 80 ms | 40–200 ms |
-| 长按阈值 | 2000 ms | 1000–5000 ms |
+| 抚摸防抖时间 | 80 ms | 40–200 ms |
+| 抚摸最小时长 | 300 ms | 200–800 ms |
 | 自动休眠时间 | 5 min | 1–60 min，或禁用 |
 | 深睡眠等待时间 | 30 min | 5 min–24 h，或禁用 |
 | 普通动作总时长 | 0.6–3 s | 由运动 Profile 限制 |
@@ -197,7 +195,7 @@ OTA 不是产品行为，而是生命周期流程。系统接受通过前置校�
 - 行为完成后进入预期生命周期状态。
 - 优先级更高的事件能在规定时间内中断当前行为。
 - 重复命令满足幂等规则。
-- 触摸抖动不会产生重复行为。
+- 短于最小时长的触摸和触摸抖动不会产生行为；有效抚摸稳定释放后只产生一次行为。
 - 行为超时能终止未返回完成事件的执行器。
 - 任意舵机目标都被限制在已配置安全行程内。
 - `Fault` 状态不会继续执行普通动作或无限振动。

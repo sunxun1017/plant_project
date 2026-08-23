@@ -38,7 +38,6 @@ COMMANDS = {
     "ota-chunk": 0x11,
     "finish-ota": 0x12,
     "cancel-ota": 0x13,
-    "forget-bonds": 0x20,
 }
 BEHAVIORS = {"wake-up": 0, "happy": 1, "sleep": 4, "error": 5}
 ERROR_NAMES = (
@@ -442,7 +441,7 @@ async def run_hardware_command(args: argparse.Namespace) -> None:
                 "BLE connected, but encrypted response notification subscription failed "
                 f"after {NOTIFY_SUBSCRIBE_ATTEMPTS} attempts: {detail}"
             ) from error
-        if args.command in ("ping", "state", "stop", "cancel-ota", "forget-bonds"):
+        if args.command in ("ping", "state", "stop", "cancel-ota"):
             await require_success(session, args.command)
         elif args.command == "behavior":
             await require_success(session, "behavior", bytes((BEHAVIORS[args.behavior],)))
@@ -477,7 +476,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--protocol-version", type=int, choices=(VERSION, VERSION_V2), default=VERSION_V2
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for name in ("ping", "state", "stop", "cancel-ota", "forget-bonds"):
+    for name in ("ping", "state", "stop", "cancel-ota"):
         subparsers.add_parser(name)
 
     behavior = subparsers.add_parser("behavior")

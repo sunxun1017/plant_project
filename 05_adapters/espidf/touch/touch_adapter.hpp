@@ -12,8 +12,7 @@ struct EspTouchConfig {
     int gpio;
     bool active_high;
     std::uint32_t debounce_ms;
-    std::uint32_t long_press_ms;
-    std::uint32_t factory_reset_hold_ms;
+    std::uint32_t minimum_touch_ms;
     bool enable_internal_pull_down;
     EspRuntimeEventSignal runtime_event{};
 };
@@ -36,10 +35,9 @@ private:
     bool initialized_{false};
     bool raw_pressed_{false};
     bool stable_pressed_{false};
-    bool long_press_reported_{false};
-    bool factory_reset_reported_{false};
+    bool stable_touch_started_{false};
     std::uint64_t raw_changed_ms_{0};
-    std::uint64_t pressed_since_ms_{0};
+    std::uint64_t stable_touch_started_ms_{0};
     std::atomic<bool> interrupt_armed_{false};
 };
 

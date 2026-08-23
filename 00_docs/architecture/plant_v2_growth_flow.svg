@@ -13,7 +13,7 @@
 <g id="node1" class="node">
 <title>touch</title>
 <path fill="#fffbeb" stroke="#a16207" stroke-width="1.15" d="M304.5,-1011C304.5,-1011 258.5,-1011 258.5,-1011 252.5,-1011 246.5,-1005 246.5,-999 246.5,-999 246.5,-985 246.5,-985 246.5,-979 252.5,-973 258.5,-973 258.5,-973 304.5,-973 304.5,-973 310.5,-973 316.5,-979 316.5,-985 316.5,-985 316.5,-999 316.5,-999 316.5,-1005 310.5,-1011 304.5,-1011"/>
-<text text-anchor="middle" x="281.5" y="-995.2" font-family="Noto Sans CJK SC" font-size="11.00">单击触摸</text>
+<text text-anchor="middle" x="281.5" y="-995.2" font-family="Noto Sans CJK SC" font-size="11.00">有效抚摸</text>
 <text text-anchor="middle" x="281.5" y="-983.2" font-family="Noto Sans CJK SC" font-size="11.00">Touch</text>
 </g>
 <!-- submit -->

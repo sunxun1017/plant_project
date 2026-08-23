@@ -7,9 +7,9 @@ digraph PlantV2BehaviorFlow {
         label="触发源";
         color="#DDD6FE";
         style="rounded";
-        touch [label="触摸\n单击 Happy\n长按 Sleep / WakeUp", fillcolor="#F5F3FF"];
+        touch [label="触摸输入", fillcolor="#F5F3FF"];
         ble [label="BLE 命令\nSetBehavior / StopBehavior", fillcolor="#F5F3FF"];
-        connected [label="BLE 加密完成\nIdle: Happy\nSleeping: WakeUp", fillcolor="#F5F3FF"];
+        connected [label="BLE 加密完成\nIdle/Sleeping: Happy", fillcolor="#F5F3FF"];
         timeout [label="Idle 超时\nSleep", fillcolor="#F5F3FF"];
     }
 
@@ -20,15 +20,21 @@ digraph PlantV2BehaviorFlow {
     outputTick [label="每个 tick\n灯光仲裁与振动动画继续推进", fillcolor="#F8FAFC", color="#64748B"];
     complete [label="普通行为立即完成\nLifecycle -> Idle", fillcolor="#DCFCE7", color="#15803D"];
     sleeping [label="Sleep 完成\nLifecycle -> Sleeping\n允许 Light Sleep", fillcolor="#DBEAFE", color="#1D4ED8"];
-    wake [label="WakeUp 前\n恢复主动电源域\n完成 -> Idle", fillcolor="#DBEAFE", color="#1D4ED8"];
+    wake [label="显式 WakeUp\n完成 -> Idle", fillcolor="#DBEAFE", color="#1D4ED8"];
+    touchDuration [shape=diamond, label="稳定触摸 >= 300 ms\n并稳定释放？", fillcolor="#FFF7ED", color="#B45309"];
+    restore [label="当前为 LightSleep？\n恢复主动电源域\n再执行 Happy", fillcolor="#DBEAFE", color="#1D4ED8"];
+    ignoredTouch [label="短触或抖动\n不产生业务事件", fillcolor="#F1F5F9", color="#64748B"];
     rejected [label="保持原状态\n返回 Busy / InvalidState", fillcolor="#F1F5F9", color="#64748B"];
     fault [label="输出失败、超时或 FaultRaised\n停止舵机/灯光/振动\nError + Warning；-> Fault", fillcolor="#FEE2E2", color="#B91C1C"];
 
     {rank=same; touch; ble; connected; timeout;}
-    touch -> gate;
+    touch -> touchDuration;
+    touchDuration -> ignoredTouch [label="否"];
+    touchDuration -> restore [label="是：有效抚摸"];
     ble -> gate;
-    connected -> gate;
+    connected -> restore;
     timeout -> gate;
+    restore -> gate;
     gate -> rejected [label="否"];
     gate -> lifecycleBegin [label="是"];
     lifecycleBegin -> plan -> execute;

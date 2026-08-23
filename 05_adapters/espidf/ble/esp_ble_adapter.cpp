@@ -157,13 +157,6 @@ bool EspBleAdapter::bonded() const {
     return bonded_.load();
 }
 
-Status EspBleAdapter::forget_bonds() {
-    // 该入口只由加密 GATT 命令调用。清除 NVS 中的 LTK、IRK 和 CCCD；composition
-    // root 会先发送响应再重启，使下一次连接必须重新配对。
-    return ble_store_clear() == 0 ? Status::success()
-                                  : Status::failure(ErrorCode::StorageFailure);
-}
-
 Status EspBleAdapter::request_fast_advertising() {
     if (connected_.load()) {
         return Status::failure(ErrorCode::Busy);
@@ -246,7 +239,7 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
                      event->subscribe.cur_indicate);
             return 0;
         case BLE_GAP_EVENT_REPEAT_PAIRING:
-            // 不自动删除已持久化的绑定；解绑必须走显式的本机恢复流程。
+            // 不自动删除已持久化的绑定；本产品不提供运行期解绑入口。
             ESP_LOGW(kTag, "BLE peer requested repeat pairing; preserving existing bond");
             return BLE_GAP_REPEAT_PAIRING_IGNORE;
         default:

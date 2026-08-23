@@ -76,7 +76,6 @@ Status Decoder::decode(
         case CommandType::StopBehavior:
         case CommandType::FinishOta:
         case CommandType::CancelOta:
-        case CommandType::ForgetBonds:
             return no_payload(payload_size) ? Status::success()
                                             : Status::failure(ErrorCode::InvalidArgument);
         case CommandType::SetBehavior:

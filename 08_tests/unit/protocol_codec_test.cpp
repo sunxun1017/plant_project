@@ -140,21 +140,13 @@ void test_crc_and_payload_validation() {
     }
 }
 
-void test_forget_bonds_requires_empty_payload() {
+void test_retired_command_id_is_unsupported() {
     Command command{};
-    auto frame = make_request(CommandType::ForgetBonds, 9, nullptr, 0, protocol::kVersion2);
-    CHECK_PROTOCOL(protocol::Decoder::decode(frame.data(), frame.size(), command).ok());
-    CHECK_PROTOCOL(command.type == CommandType::ForgetBonds);
-
-    const std::uint8_t unexpected_payload[]{1};
-    frame = make_request(
-        CommandType::ForgetBonds,
-        10,
-        unexpected_payload,
-        sizeof(unexpected_payload),
-        protocol::kVersion2);
+    const auto frame = make_request(
+        static_cast<CommandType>(0x20), 9, nullptr, 0, protocol::kVersion2);
     CHECK_PROTOCOL(protocol::Decoder::decode(frame.data(), frame.size(), command).code() ==
-                   ErrorCode::InvalidArgument);
+                   ErrorCode::Unsupported);
+    CHECK_PROTOCOL(command.request_id == 9);
 }
 
 void test_response_encoding() {
@@ -275,7 +267,7 @@ int run_protocol_codec_tests() {
     test_set_behavior_decoding();
     test_ota_begin_and_chunk_decoding();
     test_crc_and_payload_validation();
-    test_forget_bonds_requires_empty_payload();
+    test_retired_command_id_is_unsupported();
     test_response_encoding();
     test_v2_request_and_extended_response();
     test_communication_service_round_trip();

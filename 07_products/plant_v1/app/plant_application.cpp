@@ -17,27 +17,20 @@ Status PlantApplication::tick(std::uint64_t now_us) {
     return apply_pending_behavior_outcome(behavior_.tick(now_us));
 }
 
-Status PlantApplication::handle_touch(TouchGesture gesture) {
+Status PlantApplication::handle_touch(TouchGesture) {
     const DeviceState state = lifecycle_.snapshot().state;
     if (state == DeviceState::Booting || state == DeviceState::Fault ||
         state == DeviceState::Updating) {
         return Status::failure(ErrorCode::InvalidState);
     }
 
-    if (gesture == TouchGesture::LongPress) {
-        return start_behavior(
-            state == DeviceState::Sleeping ? Behavior::WakeUp : Behavior::Sleep,
-            InterruptionReason::WakeSleep);
-    }
-    return start_behavior(
-        state == DeviceState::Sleeping ? Behavior::WakeUp : Behavior::Happy,
-        InterruptionReason::Touch);
+    return start_behavior(Behavior::Happy, InterruptionReason::Touch);
 }
 
 Status PlantApplication::handle_communication_connected() {
     const DeviceState state = lifecycle_.snapshot().state;
     if (state == DeviceState::Sleeping) {
-        return request_behavior(Behavior::WakeUp, InterruptionReason::WakeSleep);
+        return request_behavior(Behavior::Happy, InterruptionReason::NormalCommand);
     }
     if (state == DeviceState::Idle || state == DeviceState::Interacting) {
         return request_behavior(Behavior::Happy, InterruptionReason::NormalCommand);
@@ -135,9 +128,6 @@ Status PlantApplication::handle_command(const Command& command) {
             return finish_ota();
         case CommandType::CancelOta:
             return cancel_ota();
-        case CommandType::ForgetBonds:
-            // 绑定密钥属于平台 BLE Adapter；V2 composition root 在加密链路上显式处理。
-            return Status::failure(ErrorCode::Unsupported);
     }
     return Status::failure(ErrorCode::Unsupported);
 }
@@ -212,8 +202,8 @@ OtaSnapshot PlantApplication::ota_snapshot() const noexcept {
 Status PlantApplication::start_behavior(Behavior behavior, InterruptionReason reason) { // 所有非阻塞语义行为的统一启动入口。
     const LifecycleSnapshot before = lifecycle_.snapshot(); // 保存启动行为前的生命周期和功耗模式。
     if (before.state == DeviceState::Sleeping &&
-        before.power_mode == PowerMode::LightSleep && behavior == Behavior::WakeUp) {
-        const Status wake_status = power_.wake_from_low_power(); // 先退出轻睡眠，再启动 WakeUp 表现。
+        before.power_mode == PowerMode::LightSleep && behavior != Behavior::Sleep) {
+        const Status wake_status = power_.wake_from_low_power();
         if (!wake_status.ok()) {
             return wake_status;
         }

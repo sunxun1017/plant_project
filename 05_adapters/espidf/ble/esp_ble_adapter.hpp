@@ -48,7 +48,6 @@ public:
     [[nodiscard]] bool connected() const override;
     [[nodiscard]] bool secure() const override;
     [[nodiscard]] bool bonded() const override;
-    Status forget_bonds() override;
     Status request_fast_advertising();
 
     static int gap_event(ble_gap_event* event, void* argument);

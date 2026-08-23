@@ -28,7 +28,6 @@ public:
     [[nodiscard]] virtual bool connected() const = 0;
     [[nodiscard]] virtual bool secure() const { return false; }
     [[nodiscard]] virtual bool bonded() const { return false; }
-    virtual Status forget_bonds() { return Status::failure(ErrorCode::Unsupported); }
 };
 
 }  // namespace plant

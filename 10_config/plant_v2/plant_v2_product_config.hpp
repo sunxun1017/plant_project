@@ -49,8 +49,7 @@ struct ProductConfig final {
 
     struct Touch final {
         static constexpr std::uint32_t debounce_ms = 80;
-        static constexpr std::uint32_t long_press_ms = 2000;
-        static constexpr std::uint32_t factory_reset_hold_ms = 10000;
+        static constexpr std::uint32_t minimum_touch_ms = 300;
     };
 
     struct Growth final {
@@ -120,8 +119,7 @@ static_assert(
 static_assert(
     ProductConfig::Climate::suitable_min_humidity_tenths_percent <
     ProductConfig::Climate::suitable_max_humidity_tenths_percent);
-static_assert(
-    ProductConfig::Touch::factory_reset_hold_ms > ProductConfig::Touch::long_press_ms);
+static_assert(ProductConfig::Touch::minimum_touch_ms > 0);
 static_assert(ProductConfig::Growth::decay_step < ProductConfig::Growth::step);
 static_assert(
     ProductConfig::Growth::maximum_pending_credits > 0 &&

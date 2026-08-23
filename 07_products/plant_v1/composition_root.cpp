@@ -49,8 +49,7 @@ EspTouchAdapter touch{EspTouchConfig{
     Config::Gpio::touch_input,
     Config::Touch::active_high,
     Config::Touch::debounce_ms,
-    Config::Touch::long_press_ms,
-    0,
+    Config::Touch::minimum_touch_ms,
     Config::Touch::enable_internal_pull_down,
 }}; // 触摸输入适配器。
 EspBleAdapter ble{EspBleConfig{

@@ -60,28 +60,18 @@ bool EspTouchAdapter::poll(std::uint64_t now_ms, TouchGesture& gesture) {
         now_ms - raw_changed_ms_ >= config_.debounce_ms) {
         stable_pressed_ = raw_pressed_;
         if (stable_pressed_) {
-            pressed_since_ms_ = now_ms;
-            long_press_reported_ = false;
-            factory_reset_reported_ = false;
-        } else if (!long_press_reported_) {
-            gesture = TouchGesture::SingleTap;
+            stable_touch_started_ = true;
+            stable_touch_started_ms_ = now_ms;
+        } else {
+            const bool accepted = stable_touch_started_ &&
+                                  now_ms - stable_touch_started_ms_ >= config_.minimum_touch_ms;
+            stable_touch_started_ = false;
+            if (!accepted) {
+                return false;
+            }
+            gesture = TouchGesture::Touch;
             return true;
         }
-    }
-
-    if (stable_pressed_ && config_.factory_reset_hold_ms != 0 &&
-        !factory_reset_reported_ &&
-        now_ms - pressed_since_ms_ >= config_.factory_reset_hold_ms) {
-        factory_reset_reported_ = true;
-        long_press_reported_ = true;
-        gesture = TouchGesture::FactoryResetHold;
-        return true;
-    }
-    if (stable_pressed_ && !long_press_reported_ &&
-        now_ms - pressed_since_ms_ >= config_.long_press_ms) {
-        long_press_reported_ = true;
-        gesture = TouchGesture::LongPress;
-        return true;
     }
     return false;
 }
@@ -96,14 +86,6 @@ std::uint32_t EspTouchAdapter::next_poll_delay_ms(
     std::uint64_t deadline_ms = now_ms + maximum_delay_ms;
     if (raw_pressed_ != stable_pressed_) {
         deadline_ms = std::min(deadline_ms, raw_changed_ms_ + config_.debounce_ms);
-    } else if (stable_pressed_) {
-        if (!long_press_reported_) {
-            deadline_ms = std::min(deadline_ms, pressed_since_ms_ + config_.long_press_ms);
-        }
-        if (config_.factory_reset_hold_ms != 0 && !factory_reset_reported_) {
-            deadline_ms =
-                std::min(deadline_ms, pressed_since_ms_ + config_.factory_reset_hold_ms);
-        }
     }
     if (deadline_ms <= now_ms) {
         return 1;

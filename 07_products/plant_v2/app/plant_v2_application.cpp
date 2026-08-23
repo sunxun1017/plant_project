@@ -95,15 +95,13 @@ Status PlantV2Application::handle_touch(TouchGesture gesture, std::uint64_t now_
     if (!touch_status.ok()) {
         return touch_status;
     }
-    if (gesture == TouchGesture::SingleTap) {
-        (void)light_.request(
-            LightLayer::Touch,
-            LightCue::TouchAccepted,
-            kNormalizedSensorMaximum,
-            now_us,
-            450ULL * 1000ULL);
-        (void)growth_.submit(GrowthSource::Touch, now_us);
-    }
+    (void)light_.request(
+        LightLayer::Touch,
+        LightCue::TouchAccepted,
+        kNormalizedSensorMaximum,
+        now_us,
+        450ULL * 1000ULL);
+    (void)growth_.submit(GrowthSource::Touch, now_us);
     return touch_status;
 }
 

@@ -39,10 +39,10 @@ BSP 文件数量少本身没有问题。一块板使用一个集中式、只含�
 | `Illumination` | Dark/Bright 语义门限、确认/退出时间、促进时间片 | Product defaults → `IlluminationService` |
 | `Climate` | “适宜”温湿度区间、迟滞和促进时间片 | Product defaults → `ClimateService` |
 | `Battery` | Low/Critical 产品门限 | Product defaults → `BatteryService` |
-| `Touch` | 防抖、2 秒长按、10 秒恢复绑定 | Product interaction defaults |
+| `Touch` | 防抖、最小时长 | Product interaction defaults |
 | `Growth` | 生长/回落步长、队列容量、无互动门限和回落周期 | Product defaults → `GrowthService` |
 | `Interaction` | 自动休眠和 System Tick | Product composition/runtime config |
-| `Power` | 是否启用深睡眠、进入深睡眠等待时间、定时唤醒周期 | Product power policy |
+| `Power` | 轻睡眠调度与电源锁策略 | Product power policy |
 | `Product` | 设备名、产品 ID、固件版本、OTA 分片大小 | Product/build/protocol config |
 | `Ble` | UUID、MTU、队列深度、广播策略、绑定/连接策略 | Protocol + product transport config |
 
@@ -51,7 +51,7 @@ BSP 文件数量少本身没有问题。一块板使用一个集中式、只含�
 - `Microphone::valid_raw_*` 是电气/标定事实，属于 BSP；讲话门限和时间属于 Service 配置。
 - `Illumination::fixed_resistor_ohm` 属于 BSP；`bright_confirm_ms` 属于产品策略。
 - `Climate::address` 属于 BSP；`suitable_min_temperature` 属于产品定义。
-- `Touch::active_high` 和内部下拉属于 BSP；长按语义属于产品交互配置。
+- `Touch::active_high` 和内部下拉属于 BSP；防抖时间与抚摸最小时长属于产品交互配置。
 - CPU 可用频率受芯片和板级电源约束；是否在某状态进入深睡眠属于产品策略。
 
 ## 4. 仍需继续控制的漂移风险
