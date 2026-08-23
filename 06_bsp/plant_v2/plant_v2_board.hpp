@@ -18,6 +18,9 @@ constexpr bool pins_are_unique(const std::array<int, Size>& pins) {
     return true;
 }
 
+// 状态：全部待定（TBD）。以下 GPIO、ADC 通道、器件/外设实现方式、电气端点、
+// 极性、时序和安全限制都是原理图冻结前的临时基线，尚未经过最终 BOM、PCB 和样机
+// 验证；不得把它们当作量产硬件结论。
 // V2 原理图冻结前的集中式板级基线。GPIO、ADC 电气端点和器件时序都必须经过
 // 00_docs/testing/board_bringup_v2.md 的样机流程标定后才能用于量产。
 struct BoardConfig final {

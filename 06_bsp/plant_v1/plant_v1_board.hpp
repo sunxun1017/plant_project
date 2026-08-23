@@ -5,6 +5,9 @@
 
 namespace plant::bsp::v1 {
 
+// 状态：全部待定（TBD）。以下 GPIO、外设实现方式、电气极性、脉宽和时序
+// 都只是当前交叉编译/联调基线，尚未经过最终原理图、BOM 和样机验证。
+// 在板级验证完成前，不得把这些值当作量产硬件结论。
 // Plant V1 的所有临时板级参数集中在此文件。上板确认后只修改这里，
 // Service、产品行为和 ESP-IDF Adapter 中不得再出现裸 GPIO 或脉宽常量。
 struct BoardConfig final {
