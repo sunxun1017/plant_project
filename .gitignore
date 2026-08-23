@@ -9,3 +9,16 @@ __pycache__/
 # Local editor indexes.
 /.cache/
 /.vscode/browse.vc.db*
+/.vscode/c_cpp_properties.json
+/.vscode/local-comment/
+
+# Local AI coding-assistant state. Shared repository instructions live in
+# .agents/ and remain versioned deliberately.
+/.codex/
+/.claude/
+/.cursor/
+/.continue/
+/.aider/
+/.roo/
+/.kilocode/
+/.serena/
