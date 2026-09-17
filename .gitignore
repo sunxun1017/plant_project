@@ -1,6 +1,10 @@
 # Generated CMake and ESP-IDF output.
 /build/
 /build-*/
+/build_*/
+/sdkconfig.*
+/dependencies.lock
+/managed_components/
 /compile_commands.json
 /sdkconfig
 __pycache__/

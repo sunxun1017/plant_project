@@ -13,10 +13,11 @@ class FakeMotion final : public IMotionPort {
 public:
     Status stop() override {
         ++stop_count;
-        return Status::success();
+        return stop_status;
     }
 
     int stop_count{0};
+    Status stop_status{};
 };
 
 class FakeLight final : public ILightPort {
@@ -30,7 +31,7 @@ public:
 
     Status stop() override {
         ++stop_count;
-        return Status::success();
+        return stop_status;
     }
 
     Status tick(std::uint64_t) override { return tick_status; }
@@ -39,6 +40,7 @@ public:
     std::uint32_t last_execution_id{0};
     int play_count{0};
     int stop_count{0};
+    Status stop_status{};
     Status next_status{};
     Status tick_status{};
 };
@@ -54,7 +56,7 @@ public:
 
     Status stop() override {
         ++stop_count;
-        return Status::success();
+        return stop_status;
     }
 
     Status tick(std::uint64_t) override { return tick_status; }
@@ -64,6 +66,7 @@ public:
     std::uint32_t last_execution_id{0};
     int play_count{0};
     int stop_count{0};
+    Status stop_status{};
     Status next_status{};
     Status tick_status{};
     bool output_active{false};
@@ -78,6 +81,35 @@ int failures = 0;
             ++failures;                                                                      \
         }                                                                                    \
     } while (false)
+
+void test_stop_after_semantic_completion_stops_every_output() {
+    FakeMotion motion;
+    FakeLight light;
+    FakeHaptic haptic;
+    BehaviorService service{motion, light, haptic};
+    CHECK(service.start(Behavior::Happy).ok());
+    CHECK(service.take_outcome() == BehaviorOutcome::CompletedIdle);
+    CHECK(service.stop().ok());
+    CHECK(motion.stop_count == 2);
+    CHECK(light.stop_count == 1);
+    CHECK(haptic.stop_count == 1);
+    CHECK(service.take_outcome() == BehaviorOutcome::Stopped);
+}
+
+void test_stop_failure_attempts_all_outputs_without_restarting_haptic() {
+    FakeMotion motion;
+    FakeLight light;
+    FakeHaptic haptic;
+    BehaviorService service{motion, light, haptic};
+    CHECK(service.start(Behavior::Happy).ok());
+    motion.stop_status = Status::failure(ErrorCode::MotionFailure);
+    CHECK(service.stop().code() == ErrorCode::MotionFailure);
+    CHECK(light.stop_count == 1);
+    CHECK(haptic.stop_count == 1);
+    CHECK(haptic.play_count == 1);
+    CHECK(service.snapshot().state == BehaviorRunState::Fault);
+    CHECK(service.take_outcome() == BehaviorOutcome::Faulted);
+}
 
 void test_happy_maps_to_three_outputs() {
     FakeMotion motion;
@@ -258,6 +290,8 @@ int run_sensing_growth_service_tests();
 }
 
 int main() {
+    test_stop_after_semantic_completion_stops_every_output();
+    test_stop_failure_attempts_all_outputs_without_restarting_haptic();
     test_happy_maps_to_three_outputs();
     test_behavior_starts_without_a_previous_behavior();
     test_growth_only_profile_keeps_servo_stopped_for_regular_behaviors();

@@ -121,12 +121,15 @@ Status EspBleAdapter::initialize() {
 }
 
 bool EspBleAdapter::receive(BleFrame& frame) {
-    RxItem item{};
-    if (queue_ == nullptr || xQueueReceive(queue_, &item, 0) != pdTRUE) {
-        return false;
-    }
     frame.clear();
-    return frame.append(item.data.data(), item.size);
+    RxItem item{};
+    while (queue_ != nullptr && xQueueReceive(queue_, &item, 0) == pdTRUE) {
+        if (connected_.load() && secure_.load() && bonded_.load() &&
+            item.session == session_.load()) {
+            return frame.append(item.data.data(), item.size);
+        }
+    }
+    return false;
 }
 
 Status EspBleAdapter::send(const std::uint8_t* data, std::size_t size) {
@@ -180,6 +183,7 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
             if (event->connect.status == 0) {
                 ESP_LOGI(kTag, "BLE peer connected handle=%u",
                          event->connect.conn_handle);
+                self->session_.fetch_add(1);
                 self->connection_handle_.store(event->connect.conn_handle);
                 self->connected_.store(true);
                 self->secure_.store(false);
@@ -199,6 +203,8 @@ int EspBleAdapter::gap_event(ble_gap_event* event, void* argument) {
             ESP_LOGI(kTag, "BLE peer disconnected reason=%d",
                      event->disconnect.reason);
             self->connected_.store(false);
+            self->session_.fetch_add(1);
+            if (self->queue_ != nullptr) { xQueueReset(self->queue_); }
             self->secure_.store(false);
             self->bonded_.store(false);
             self->connection_handle_.store(BLE_HS_CONN_HANDLE_NONE);
@@ -298,6 +304,8 @@ void EspBleAdapter::on_reset(int reason) {
     ESP_LOGE(kTag, "NimBLE reset reason=%d", reason);
     if (instance_ != nullptr) {
         instance_->connected_.store(false);
+        instance_->session_.fetch_add(1);
+        if (instance_->queue_ != nullptr) { xQueueReset(instance_->queue_); }
         instance_->secure_.store(false);
         instance_->bonded_.store(false);
         instance_->signal_runtime_event();
@@ -360,6 +368,7 @@ bool EspBleAdapter::enqueue(const std::uint8_t* data, std::size_t size) {
         return false;
     }
     RxItem item{};
+    item.session = session_.load();
     item.size = static_cast<std::uint16_t>(size);
     for (std::size_t index = 0; index < size; ++index) {
         item.data[index] = data[index];

@@ -76,12 +76,13 @@ public:
     Status play(HapticPattern, std::uint32_t) override { return Status::success(); }
     Status stop() override {
         output_active = false;
-        return Status::success();
+        return stop_status;
     }
     Status tick(std::uint64_t) override { return Status::success(); }
     bool active() const noexcept override { return output_active; }
 
     bool output_active{false};
+    Status stop_status{};
 };
 
 class V2Power final : public IPowerPort {
@@ -236,6 +237,21 @@ void queue_valid_boot_samples(V2Fixture& fixture) {
         ClimateSample{2300, 500, true}, true, Status::success()};
     fixture.battery_port.queued = {
         BatterySample{3900, 750, true}, true, Status::success()};
+}
+
+void test_idle_stop_command_stops_animation_and_propagates_failure() {
+    V2Fixture fixture;
+    CHECK_V2_APP(fixture.base.finish_boot(true).ok());
+    CHECK_V2_APP(fixture.base.request_behavior(Behavior::Happy).ok());
+    fixture.haptic.output_active = true;
+    Command command{};
+    command.type = CommandType::StopBehavior;
+    CHECK_V2_APP(fixture.app.handle_command(command).ok());
+    CHECK_V2_APP(!fixture.haptic.output_active);
+    CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Idle);
+    fixture.haptic.stop_status = Status::failure(ErrorCode::HapticFailure);
+    CHECK_V2_APP(fixture.app.handle_command(command).code() == ErrorCode::HapticFailure);
+    CHECK_V2_APP(fixture.lifecycle.snapshot().state == DeviceState::Fault);
 }
 
 void test_boot_sensor_gate_and_telemetry_snapshots() {
@@ -503,6 +519,7 @@ void test_bounded_retry_switches_to_fault_backoff() {
 }  // namespace
 
 int run_plant_v2_application_tests() {
+    test_idle_stop_command_stops_animation_and_propagates_failure();
     test_boot_sensor_gate_and_telemetry_snapshots();
     test_optional_sensor_faults_do_not_fail_critical_boot_gate();
     test_light_sleep_keeps_environment_sampling_and_queues_growth();

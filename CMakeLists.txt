@@ -3,13 +3,26 @@ cmake_minimum_required(VERSION 3.16)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(ESP_PLATFORM)
-    set(PLANT_PRODUCT "v2" CACHE STRING "Plant firmware product")
-    if(NOT PLANT_PRODUCT STREQUAL "v2")
-        message(FATAL_ERROR "This repository builds the V2 Plant product only")
+    set(PLANT_PRODUCT "zw_v1" CACHE STRING "Plant firmware product")
+    if(PLANT_PRODUCT STREQUAL "zw_v1")
+        set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/07_products/plant_zw_v1")
+        set(COMPONENTS plant_zw_v1)
+        set(SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/10_config/zw_v1/sdkconfig.defaults")
+    elseif(PLANT_PRODUCT STREQUAL "v2")
+        set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/07_products/plant_v2")
+        message(WARNING "v2 is the legacy hypothetical board, NOT the ZW V1.0 release PCB. Use -DPLANT_PRODUCT=zw_v1 for ZW hardware bring-up.")
+    else()
+        message(FATAL_ERROR "PLANT_PRODUCT must be v2 or zw_v1")
     endif()
-    set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/07_products/plant_${PLANT_PRODUCT}")
     include($ENV{IDF_PATH}/tools/cmake/project.cmake)
     project(plant_${PLANT_PRODUCT})
+    if(PLANT_PRODUCT STREQUAL "zw_v1")
+        # esp_codec_dev 1.5.3 SPI source uses IDF version macros without
+        # including their header. IDF 6.1 no longer supplies it transitively.
+        # Keep the registry component immutable; scope compatibility to it.
+        idf_component_get_property(zw_codec_lib espressif__esp_codec_dev COMPONENT_LIB)
+        target_compile_options(${zw_codec_lib} PRIVATE -include esp_idf_version.h)
+    endif()
 else()
     project(plant_project LANGUAGES CXX)
 
@@ -43,6 +56,7 @@ include(CTest)
 
 if(BUILD_TESTING)
     add_executable(plant_domain_tests
+        08_tests/unit/zw_v1_board_test.cpp
         08_tests/unit/behavior_service_test.cpp
         08_tests/unit/ota_power_service_test.cpp
         08_tests/integration/plant_v2_application_test.cpp

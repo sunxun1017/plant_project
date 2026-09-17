@@ -1,0 +1,23 @@
+menu "ZW V1.0 board bring-up"
+config ZW_BOARD_POWER_PATH_VERIFIED
+    bool "PNP base current limiting and power-domain isolation verified on the physical board"
+    default n
+    help
+        The supplied PCB ties PCF8574 outputs directly to PNP bases. The 10k
+        resistors are base-emitter pullups, not series current limiting.
+        Confirm hardware correction/current limits before enabling this target.
+        Default firmware prints a diagnostic and does not initialize the loads.
+config ZW_TEST_AUDIO
+    bool "Run one ES8311 microphone level test at boot"
+    default n
+    help
+        Bench test only. Captures PCM then enters codec standby and stops I2S.
+        This does not implement speech recognition or continuous audio wake.
+config ZW_TEST_DEEP_SLEEP
+    bool "Enter deep sleep after 30 seconds, wake every 60 seconds or on touch"
+    default n
+    help
+        Measurement mode. USB will disconnect in deep sleep. No BLE connection
+        is maintained. Actuators and charging stay disabled; shared I2C rail
+        and codec digital supply stay on with codec in software standby.
+endmenu

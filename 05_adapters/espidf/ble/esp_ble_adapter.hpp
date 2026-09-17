@@ -64,6 +64,7 @@ public:
 
 private:
     struct RxItem {
+        std::uint32_t session;
         std::uint16_t size;
         std::array<std::uint8_t, kMaximumBleFrameSize> data;
     };
@@ -90,6 +91,7 @@ private:
         sizeof(RxItem) * kMaximumReceiveQueueDepth>
         queue_storage_{};
     QueueHandle_t queue_{nullptr};
+    std::atomic<std::uint32_t> session_{0};
     std::atomic<bool> connected_{false};
     std::atomic<bool> secure_{false};
     std::atomic<bool> bonded_{false};

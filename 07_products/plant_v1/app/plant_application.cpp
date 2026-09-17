@@ -58,17 +58,18 @@ Status PlantApplication::request_behavior(Behavior behavior, InterruptionReason 
 
 Status PlantApplication::stop_behavior() {
     const DeviceState state = lifecycle_.snapshot().state;
-    if (state == DeviceState::Idle) {
-        return Status::success();
-    }
-    if (state != DeviceState::Interacting) {
+    if (state != DeviceState::Idle && state != DeviceState::Interacting) {
         return Status::failure(ErrorCode::InvalidState);
     }
     const Status status = behavior_.stop();
-    if (!status.ok()) {
-        return status;
+    const BehaviorOutcome outcome = behavior_.take_outcome();
+    if (outcome == BehaviorOutcome::Faulted || state == DeviceState::Interacting) {
+        const Status lifecycle_status = apply_behavior_outcome(outcome);
+        if (!lifecycle_status.ok()) {
+            return lifecycle_status;
+        }
     }
-    return apply_behavior_outcome(behavior_.take_outcome());
+    return status;
 }
 
 Status PlantApplication::handle_behavior_event(const BehaviorEvent& event) {

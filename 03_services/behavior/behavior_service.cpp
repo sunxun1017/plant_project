@@ -73,13 +73,22 @@ Status BehaviorService::stop() {
     if (state_ == BehaviorRunState::Fault) {
         return Status::failure(ErrorCode::InvalidState);
     }
-    if (state_ == BehaviorRunState::Idle) {
-        return Status::success();
+    // Semantic completion does not imply that asynchronous outputs are off.
+    const Status motion_status = motion_.stop();
+    const Status light_status = light_.stop();
+    const Status haptic_status = haptic_.stop();
+    const Status status = !motion_status.ok() ? motion_status
+                         : !light_status.ok() ? light_status : haptic_status;
+    start_time_initialized_ = false;
+    if (!status.ok()) {
+        // A stop request must never restart vibration as a fault indication.
+        state_ = BehaviorRunState::Fault;
+        current_behavior_ = Behavior::Error;
+        outcome_ = BehaviorOutcome::Faulted;
+        return status;
     }
-    stop_outputs();
     state_ = BehaviorRunState::Idle;
     outcome_ = BehaviorOutcome::Stopped;
-    start_time_initialized_ = false;
     return Status::success();
 }
 
