@@ -44,6 +44,11 @@ Status OtaService::poll_boot_confirmation(
     bool self_test_ok,
     bool& attempted) {
     attempted = false;
+    if (boot_confirmation_pending_ && now_us < boot_confirmation_reference_us_) {
+        // Rebase after a clock discontinuity; require a full stable interval.
+        boot_confirmation_reference_us_ = now_us;
+        return Status::success();
+    }
     if (!boot_confirmation_pending_ ||
         now_us - boot_confirmation_reference_us_ < boot_confirmation_retry_interval_us_) {
         return Status::success();

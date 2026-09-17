@@ -36,13 +36,19 @@ Status PowerService::request_deep_sleep(const PowerConditions& conditions) {
         return Status::failure(ErrorCode::Busy);
     }
 
+    const PowerMode previous_mode = lifecycle_.snapshot().power_mode;
     Status status = lifecycle_.enter_deep_sleep_mode();
     if (!status.ok()) {
         return status;
     }
     status = power_.enter_deep_sleep(config_.timer_wakeup_us);
     if (!status.ok()) {
-        (void)lifecycle_.restore_active_power_mode();
+        // The failed transition did not acquire the active PM lock.
+        if (previous_mode == PowerMode::LightSleep) {
+            (void)lifecycle_.enter_light_sleep_mode();
+        } else {
+            (void)lifecycle_.restore_active_power_mode();
+        }
     }
     return status;
 }

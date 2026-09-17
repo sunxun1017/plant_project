@@ -66,11 +66,15 @@ Status EspPowerAdapter::enter_deep_sleep(std::uint64_t timer_wakeup_us) {
     if (esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL) != ESP_OK) {// 清除之前所有的唤醒源
         return Status::failure(ErrorCode::InternalFailure);
     }
-    const Status wake_status = configure_touch_wakeup(true);    // 配置触摸唤醒源
+    const Status wake_status = configure_touch_wakeup(true);
     if (!wake_status.ok()) {
+        // Deep-sleep setup cleared the existing automatic light-sleep wake.
+        // Restore it before returning to the still-running application.
+        (void)configure_touch_wakeup(false);
         return wake_status;
     }
-    if (timer_wakeup_us != 0 && esp_sleep_enable_timer_wakeup(timer_wakeup_us) != ESP_OK) { // 定时器唤醒
+    if (timer_wakeup_us != 0 && esp_sleep_enable_timer_wakeup(timer_wakeup_us) != ESP_OK) {
+        (void)configure_touch_wakeup(false);
         return Status::failure(ErrorCode::InternalFailure);
     }
     esp_deep_sleep_start(); // 开始深度睡眠

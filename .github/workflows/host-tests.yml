@@ -1,0 +1,20 @@
+name: Host software checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  host:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure with ASan and UBSan
+        run: cmake -S . -B build-host -DCMAKE_BUILD_TYPE=Debug -DPLANT_SANITIZERS=ON
+      - name: Build
+        run: cmake --build build-host --parallel 2
+      - name: Unit, integration and malformed-frame tests
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build-host --output-on-failure

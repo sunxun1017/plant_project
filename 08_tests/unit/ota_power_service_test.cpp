@@ -100,6 +100,35 @@ LifecycleService sleeping_lifecycle() {
     return lifecycle;
 }
 
+void test_deep_sleep_failure_preserves_light_sleep_and_can_wake() {
+    auto lifecycle = sleeping_lifecycle();
+    FakePower port;
+    PowerService power{lifecycle, port, LowPowerConfig{true, 0, 0}};
+    CHECK_LOCAL(power.request_light_sleep().ok());
+    port.next_status = Status::failure(ErrorCode::InternalFailure);
+    CHECK_LOCAL(power.request_deep_sleep({}).code() == ErrorCode::InternalFailure);
+    CHECK_LOCAL(lifecycle.snapshot().power_mode == PowerMode::LightSleep);
+    port.next_status = Status::success();
+    CHECK_LOCAL(power.wake_from_low_power().ok());
+    CHECK_LOCAL(port.leave_light_sleep_count == 1);
+}
+
+void test_boot_confirmation_clock_regression_restarts_wait() {
+    LifecycleService lifecycle;
+    FakeOta port;
+    OtaService ota{lifecycle, port, {0x504C414E, 1, 1}};
+    ota.schedule_boot_confirmation(100, 10);
+    bool attempted = true;
+    CHECK_LOCAL(ota.poll_boot_confirmation(50, true, attempted).ok());
+    CHECK_LOCAL(!attempted);
+    CHECK_LOCAL(port.finalize_boot_count == 0);
+    CHECK_LOCAL(ota.poll_boot_confirmation(59, true, attempted).ok());
+    CHECK_LOCAL(!attempted);
+    CHECK_LOCAL(ota.poll_boot_confirmation(60, true, attempted).ok());
+    CHECK_LOCAL(attempted);
+    CHECK_LOCAL(port.finalize_boot_count == 1);
+}
+
 void test_power_rejects_deep_sleep_while_busy() {
     auto lifecycle = sleeping_lifecycle();
     FakePower port;
@@ -283,6 +312,8 @@ void test_boot_confirmation_failure_remains_pending_for_retry() {
 }  // namespace
 
 int run_ota_power_service_tests() {
+    test_deep_sleep_failure_preserves_light_sleep_and_can_wake();
+    test_boot_confirmation_clock_regression_restarts_wait();
     test_power_rejects_deep_sleep_while_busy();
     test_power_disables_deep_sleep_by_default();
     test_power_enters_deep_sleep_and_records_wake();
